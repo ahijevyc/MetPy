@@ -8,7 +8,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>xarray &mdash; MetPy 0.11.0</title>
+  <title>xarray &mdash; MetPy 0.11.1</title>
   
 
   
@@ -43,10 +43,10 @@
         <link rel="index" title="Index"
               href="../../genindex.html"/>
         <link rel="search" title="Search" href="../../search.html"/>
-    <link rel="top" title="MetPy 0.11.0" href="../../index.html"/>
+    <link rel="top" title="MetPy 0.11.1" href="../../index.html"/>
         <link rel="up" title="Reference Guide" href="../index.html"/>
         <link rel="next" title="MetPy Roadmap" href="../../roadmap.html"/>
-        <link rel="prev" title="remove_repeat_coordinates" href="metpy.gridding.remove_repeat_coordinates.html"/> 
+        <link rel="prev" title="remove_repeat_coordinates" href="metpy.interpolate.remove_repeat_coordinates.html"/> 
 
   
   <script src="../../_static/js/modernizr.min.js"></script>
@@ -81,7 +81,7 @@
                 
                   <div class="version-dropdown">
                     <select class="version-list" id="version-list">
-                      <option value=''>0.11.0</option>
+                      <option value=''>0.11.1</option>
                       
                         
                           <option value="../latest">latest</option>
@@ -132,7 +132,6 @@
 <li class="toctree-l2"><a class="reference internal" href="metpy.plots.html">plots</a></li>
 <li class="toctree-l2"><a class="reference internal" href="metpy.plots.ctables.html">ctables</a></li>
 <li class="toctree-l2"><a class="reference internal" href="metpy.interpolate.html">interpolate</a></li>
-<li class="toctree-l2"><a class="reference internal" href="metpy.gridding.html">gridding</a></li>
 <li class="toctree-l2 current"><a class="current reference internal" href="#">xarray</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#accessors">Accessors</a></li>
 </ul>
@@ -253,6 +252,9 @@ to a particular axis (given sufficent metadata):</p>
 <dt id="metpy.xarray.MetPyDataArrayAccessor.as_timestamp">
 <code class="sig-name descname">as_timestamp</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/metpy/xarray.html#MetPyDataArrayAccessor.as_timestamp"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#metpy.xarray.MetPyDataArrayAccessor.as_timestamp" title="Permalink to this definition">¶</a></dt>
 <dd><p>Return the data as unix timestamp (for easier time derivatives).</p>
+<p class="rubric">Notes</p>
+<p>This function has been deprecated and will be removed in v1.0. For the purposes of
+time derivatives, use <code class="docutils literal notranslate"><span class="pre">time_deltas</span></code> instead, which allows sub-second precision.</p>
 </dd></dl>
 
 <dl class="method">
@@ -343,6 +345,12 @@ name (string) or a standard axis type (string).</p>
 <dt id="metpy.xarray.MetPyDataArrayAccessor.time">
 <em class="property">property </em><code class="sig-name descname">time</code><a class="headerlink" href="#metpy.xarray.MetPyDataArrayAccessor.time" title="Permalink to this definition">¶</a></dt>
 <dd><p>Return the time coordinate.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="metpy.xarray.MetPyDataArrayAccessor.time_deltas">
+<em class="property">property </em><code class="sig-name descname">time_deltas</code><a class="headerlink" href="#metpy.xarray.MetPyDataArrayAccessor.time_deltas" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the time difference of the data in seconds (to microsecond precision).</p>
 </dd></dl>
 
 <dl class="method">
@@ -438,7 +446,7 @@ if you wish to override MetPy’s automatic parsing of some axis type(s).</p></l
         <a href="../../roadmap.html" class="btn btn-neutral float-right" title="MetPy Roadmap" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
       
       
-        <a href="metpy.gridding.remove_repeat_coordinates.html" class="btn btn-neutral" title="remove_repeat_coordinates" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+        <a href="metpy.interpolate.remove_repeat_coordinates.html" class="btn btn-neutral" title="remove_repeat_coordinates" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
       
     </div>
   
@@ -448,7 +456,7 @@ if you wish to override MetPy’s automatic parsing of some axis type(s).</p></l
   <div role="contentinfo">
     <p>
         &copy; Copyright 2019, MetPy Developers. Development supported by National Science Foundation grants AGS-1344155, OAC-1740315, and AGS-1901712..
-      Last updated on Oct 17, 2019 at 22:26:15.
+      Last updated on Oct 28, 2019 at 18:16:59.
 
     </p>
   </div>
@@ -485,7 +493,7 @@ if you wish to override MetPy’s automatic parsing of some axis type(s).</p></l
     <script type="text/javascript">
         var DOCUMENTATION_OPTIONS = {
             URL_ROOT:'../../',
-            VERSION:'0.11.0.post28+g8c1ca0a',
+            VERSION:'0.11.1.post27+g3193e9e',
             LANGUAGE:'None',
             COLLAPSE_INDEX:false,
             FILE_SUFFIX:'.html',
