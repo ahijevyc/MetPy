@@ -9,6 +9,7 @@ Contain tools for making Skew-T Log-P plots, including the base plotting class,
 
 from contextlib import ExitStack
 
+import logging
 from matplotlib.axes import Axes
 import matplotlib.axis as maxis
 from matplotlib.collections import LineCollection
@@ -22,7 +23,7 @@ import matplotlib.transforms as transforms
 import numpy as np
 
 from ._util import colored_line
-from ..calc import dewpoint, dry_lapse, el, lcl, moist_lapse, vapor_pressure
+from ..calc import dewpoint, dry_lapse, el, lcl, moist_lapse, vapor_pressure, relative_humidity_from_dewpoint, mixing_ratio_from_relative_humidity, virtual_temperature
 from ..calc.tools import _delete_masked_points
 from ..interpolate import interpolate_1d
 from ..package_tools import Exporter
@@ -712,7 +713,7 @@ class SkewT:
         t : array_like
             Temperature values
         t_parcel : array_like
-            Parcel path temperature values
+            Parcel path virtual temperature values
         dewpoint : array_like
             Dew point values, optional
         kwargs
@@ -729,9 +730,18 @@ class SkewT:
 
         """
         if dewpoint is not None:
+            logging.debug(pressure)
             lcl_p, _ = lcl(pressure[0], t[0], dewpoint[0])
+            logging.debug(f"lcl_p={lcl_p}")
             el_p, _ = el(pressure, t, dewpoint, t_parcel)
-            idx = np.logical_and(pressure > el_p, pressure < lcl_p)
+            logging.debug(f"el_p={el_p}")
+            idx = np.logical_and(pressure > el_p, pressure <= lcl_p)
+            logging.debug(f"idx={idx}")
+            relative_humidity = relative_humidity_from_dewpoint(t, dewpoint)
+            mixing_ratio = mixing_ratio_from_relative_humidity(pressure, t, relative_humidity)
+            tv = virtual_temperature(t, mixing_ratio)
+            t = tv
+            logging.debug(f"t_parcel[idx]-t[idx] = {t_parcel[idx]-t[idx]}")
         else:
             idx = np.arange(0, len(pressure))
         return self.shade_area(pressure[idx], t_parcel[idx], t[idx], which='negative',
