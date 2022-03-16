@@ -733,14 +733,14 @@ class SkewT:
             logging.debug(pressure)
             lcl_p, _ = lcl(pressure[0], t[0], dewpoint[0])
             logging.debug(f"lcl_p={lcl_p}")
-            el_p, _ = el(pressure, t, dewpoint, t_parcel)
-            logging.debug(f"el_p={el_p}")
-            idx = np.logical_and(pressure > el_p, pressure <= lcl_p)
-            logging.debug(f"idx={idx}")
             relative_humidity = relative_humidity_from_dewpoint(t, dewpoint)
             mixing_ratio = mixing_ratio_from_relative_humidity(pressure, t, relative_humidity)
             tv = virtual_temperature(t, mixing_ratio)
             t = tv
+            el_p, _ = el(pressure, t, dewpoint, t_parcel) # environmental virtual temperature, not environmental temperature
+            logging.debug(f"el_p={el_p}")
+            idx = np.logical_and(pressure > el_p, pressure <= lcl_p)
+            logging.debug(f"idx={idx}")
             logging.debug(f"t_parcel[idx]-t[idx] = {t_parcel[idx]-t[idx]}")
         else:
             idx = np.arange(0, len(pressure))
