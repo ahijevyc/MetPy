@@ -692,7 +692,7 @@ def el(pressure, temperature, dewpoint, parcel_temperature_profile=None, which='
        Renamed ``dewpt`` parameter to ``dewpoint``
 
     """
-    pressure, temperature, dewpoint = _remove_nans(pressure, temperature, dewpoint)
+    #pressure, temperature, dewpoint = _remove_nans(pressure, temperature, dewpoint) # what about parcel_temperature_profile? if you filter the others and not parcel_temperature_profile, you get error about different size arrays below. Is this even necessary?
     # Default to surface parcel if no profile or starting pressure level is given
     if parcel_temperature_profile is None:
         new_stuff = parcel_profile_with_lcl(pressure, temperature, dewpoint)
