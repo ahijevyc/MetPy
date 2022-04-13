@@ -699,23 +699,22 @@ class SkewT:
         """
         return self.shade_area(pressure, t_parcel, t, which='positive', **kwargs)
 
-    def shade_cin(self, pressure, t, t_parcel, dewpoint=None, **kwargs):
+    def shade_cin(self, pressure, tv, tv_parcel, top="el", **kwargs):
         r"""Shade areas of Convective INhibition (CIN).
 
         Shades areas where the parcel is cooler than the environment (areas of negative
-        buoyancy). If `dewpoint` is passed in, negative area below the lifting condensation
-        level or above the equilibrium level is not shaded.
+        buoyancy). 
 
         Parameters
         ----------
         pressure : array_like
             Pressure values
-        t : array_like
-            Temperature values
-        t_parcel : array_like
+        tv : array_like
+            Virtual temperature of environment
+        tv_parcel : array_like
             Parcel path virtual temperature values
-        dewpoint : array_like
-            Dew point values, optional
+        top: string
+            top of shaded area, optional, choices: ["el", None]
         kwargs
             Other keyword arguments to pass to :class:`matplotlib.collections.PolyCollection`
 
@@ -729,22 +728,16 @@ class SkewT:
         :func:`matplotlib.axes.Axes.fill_betweenx`
 
         """
-        if dewpoint is not None:
-            logging.debug(pressure)
-            lcl_p, _ = lcl(pressure[0], t[0], dewpoint[0])
-            logging.debug(f"lcl_p={lcl_p}")
-            relative_humidity = relative_humidity_from_dewpoint(t, dewpoint)
-            mixing_ratio = mixing_ratio_from_relative_humidity(pressure, t, relative_humidity)
-            tv = virtual_temperature(t, mixing_ratio)
-            t = tv
-            el_p, _ = el(pressure, t, dewpoint, t_parcel) # environmental virtual temperature, not environmental temperature
+        if top == 'el':
+            el_p, _ = el(pressure, tv, tv_parcel)
             logging.debug(f"el_p={el_p}")
-            idx = np.logical_and(pressure > el_p, pressure <= lcl_p)
-            logging.debug(f"idx={idx}")
-            logging.debug(f"t_parcel[idx]-t[idx] = {t_parcel[idx]-t[idx]}")
-        else:
+            idx = pressure >= el_p
+        elif top is None:
             idx = np.arange(0, len(pressure))
-        return self.shade_area(pressure[idx], t_parcel[idx], t[idx], which='negative',
+        else:
+            logging.error(f"unexpected top {top}")
+        logging.debug(f"idx={idx}")
+        return self.shade_area(pressure[idx], tv_parcel[idx], tv[idx], which='negative',
                                **kwargs)
 
 
