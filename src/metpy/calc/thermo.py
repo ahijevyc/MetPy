@@ -640,8 +640,8 @@ def _most_cape_option(intersect_type, p_list, t_list, pressure, temperature, dew
 
 @exporter.export
 @preprocess_and_wrap()
-@check_units('[pressure]', '[temperature]', '[temperature]', '[temperature]')
-def el(pressure, temperature, dewpoint, parcel_temperature_profile=None, which='top'):
+@check_units('[pressure]', '[temperature]', '[temperature]')
+def el(pressure, temperature, parcel_temperature_profile):
     r"""Calculate the equilibrium level.
 
     This works by finding the last intersection of the ideal parcel path and
@@ -656,19 +656,8 @@ def el(pressure, temperature, dewpoint, parcel_temperature_profile=None, which='
     temperature : `pint.Quantity`
         Temperature at the levels given by `pressure`
 
-    dewpoint : `pint.Quantity`
-        Dewpoint at the levels given by `pressure`
-
-    parcel_temperature_profile: `pint.Quantity`, optional
-        The parcel's temperature profile from which to calculate the EL. Defaults to the
-        surface parcel profile.
-
-    which: str, optional
-        Pick which LFC to return. Options are 'top', 'bottom', 'wide', 'most_cape', and 'all'.
-        'top' returns the lowest-pressure EL, default.
-        'bottom' returns the highest-pressure EL.
-        'wide' returns the EL whose corresponding LFC is farthest away.
-        'most_cape' returns the EL that results in the most CAPE in the profile.
+    parcel_temperature_profile: `pint.Quantity`
+        The parcel's temperature profile from which to calculate the EL.
 
     Returns
     -------
@@ -688,36 +677,23 @@ def el(pressure, temperature, dewpoint, parcel_temperature_profile=None, which='
     Since this function returns scalar values when given a profile, this will return Pint
     Quantities even when given xarray DataArray profiles.
 
-    .. versionchanged:: 1.0
-       Renamed ``dewpt`` parameter to ``dewpoint``
-
     """
-    #pressure, temperature, dewpoint = _remove_nans(pressure, temperature, dewpoint) # what about parcel_temperature_profile? if you filter the others and not parcel_temperature_profile, you get error about different size arrays below. Is this even necessary?
-    # Default to surface parcel if no profile or starting pressure level is given
-    if parcel_temperature_profile is None:
-        new_stuff = parcel_profile_with_lcl(pressure, temperature, dewpoint)
-        pressure, temperature, dewpoint, parcel_temperature_profile = new_stuff
-        parcel_temperature_profile = parcel_temperature_profile.to(temperature.units)
+    pressure, temperature, parcel_temperature_profile = _remove_nans(pressure, temperature, parcel_temperature_profile) 
 
+    el_p = units.Quantity(np.nan, pressure.units)
+    el_t = units.Quantity(np.nan, temperature.units)
     # If the top of the sounding parcel is warmer than the environment, there is no EL
     if parcel_temperature_profile[-1] > temperature[-1]:
-        return (units.Quantity(np.nan, pressure.units),
-                units.Quantity(np.nan, temperature.units))
+        return (el_p, el_t)
 
     # Interpolate in log space to find the appropriate pressure - units have to be stripped
     # and reassigned to allow np.log() to function properly.
-    x, y = find_intersections(pressure[1:], parcel_temperature_profile[1:], temperature[1:],
+    x, y = find_intersections(pressure, parcel_temperature_profile, temperature,
                               direction='decreasing', log_x=True)
-    lcl_p, _ = lcl(pressure[0], temperature[0], dewpoint[0])
-    if len(x) > 0 and x[-1] < lcl_p:
-        idx = x < lcl_p
-        return _multiple_el_lfc_options(x, y, idx, which, pressure,
-                                        parcel_temperature_profile, temperature, dewpoint,
-                                        intersect_type='EL')
-    else:
-        return (units.Quantity(np.nan, pressure.units),
-                units.Quantity(np.nan, temperature.units))
-
+    if len(x) > 0:
+        el_p = x[-1]
+        el_t = y[-1]
+    return (el_p, el_t)
 
 @exporter.export
 @preprocess_and_wrap(wrap_like='pressure')
@@ -1865,8 +1841,7 @@ def cape_cin(pressure, temperature, dewpoint, parcel_profile, which_lfc='bottom'
         lfc_pressure = lfc_pressure.magnitude
 
     # Calculate the EL limit of integration
-    el_pressure, _ = el(pressure, temperature, dewpoint,
-                        parcel_temperature_profile=parcel_profile, which=which_el)
+    el_pressure, _ = el(pressure, temperature, parcel_profile)
 
     # No EL and we use the top reading of the sounding.
     if np.isnan(el_pressure):
