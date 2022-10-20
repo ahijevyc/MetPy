@@ -79,7 +79,7 @@ jobs:
 
     steps:
     - name: Download doc build
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v3.0.1
       with:
         name: Linux-3.9-docs
         path: ./docs/build/html
