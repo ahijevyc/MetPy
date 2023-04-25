@@ -61,7 +61,7 @@ temperature
 # MetPy's calculations take as input (more on that in  `Calculations`_ section below).
 #
 # If you are more interested in learning about xarray's terminology and data structures, see
-# the `terminology section <https://xarray.pydata.org/en/stable/terminology.html>`_ of xarray's
+# the `terminology section <https://docs.xarray.dev/en/stable/terminology.html>`_ of xarray's
 # documentation.
 #
 # Coordinates and Coordinate Reference Systems
@@ -226,6 +226,12 @@ heights_at_45_north
 
 temperature_degc = temperature[0].metpy.convert_units('degC')
 temperature_degc
+
+#########################################################################
+# To base unit conversion:
+
+temperature_degk = temperature_degc.metpy.convert_to_base_units()
+temperature_degk
 
 #########################################################################
 # Unit conversion for coordinates:

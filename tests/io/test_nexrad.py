@@ -25,6 +25,7 @@ logging.getLogger('metpy.io.nexrad').setLevel(logging.CRITICAL)
 # KFTG tests bzip compression and newer format for a part of message 31
 # KTLX 20150530 has missing segments for message 18, which was causing exception
 # KICX has message type 29 (MDM)
+# KVWX and KLTX have some legacy "quirks"; KLTX was crashing the parser
 level2_files = [('KTLX20130520_201643_V06.gz', datetime(2013, 5, 20, 20, 16, 46), 17, 4, 6, 0),
                 ('KTLX19990503_235621.gz', datetime(1999, 5, 3, 23, 56, 21), 16, 1, 3, 0),
                 ('Level2_KFTG_20150430_1419.ar2v', datetime(2015, 4, 30, 14, 19, 11),
@@ -35,7 +36,8 @@ level2_files = [('KTLX20130520_201643_V06.gz', datetime(2013, 5, 20, 20, 16, 46)
                  3, 0),
                 ('Level2_FOP1_20191223_003655.ar2v', datetime(2019, 12, 23, 0, 36, 55, 649000),
                  16, 5, 7, 0),
-                ('KVWX_20050626_221551.gz', datetime(2005, 6, 26, 22, 15, 51), 11, 1, 3, 23)]
+                ('KVWX_20050626_221551.gz', datetime(2005, 6, 26, 22, 15, 51), 11, 1, 3, 21),
+                ('KLTX20050329_100015.gz', datetime(2005, 3, 29, 10, 0, 15), 11, 1, 3, 21)]
 
 
 # ids here fixes how things are presented in pycharm
@@ -125,7 +127,7 @@ def test_build19_level2_additions():
 # NIDS/Level 3 Tests
 #
 nexrad_nids_files = [get_test_data(fname, as_file_obj=False)
-                     for fname in POOCH.registry if fname.startswith('nids/K')]
+                     for fname in POOCH.registry if fname.startswith('nids/')]
 
 
 @pytest.mark.parametrize('fname', nexrad_nids_files)
@@ -138,20 +140,15 @@ def test_level3_files(fname):
     if hasattr(f, 'sym_block'):
         block = f.sym_block[0][0]
         if 'data' in block:
-            f.map_data(block['data'])
+            data = block['data']
+        # Looks for radials in the XDR generic products
+        elif 'components' in block and hasattr(block['components'], 'radials'):
+            data = np.array([rad.data for rad in block['components'].radials])
+        else:
+            data = []
+        f.map_data(data)
 
     assert f.filename == fname
-
-
-tdwr_nids_files = [get_test_data(fname, as_file_obj=False)
-                   for fname in POOCH.registry if (fname.startswith('nids/Level3_MCI_')
-                                                   or fname.startswith('nids/Level3_DEN_'))]
-
-
-@pytest.mark.parametrize('fname', tdwr_nids_files)
-def test_tdwr_nids(fname):
-    """Test opening a TDWR NIDS file."""
-    Level3File(fname)
 
 
 def test_basic():
@@ -207,11 +204,6 @@ def test_dhr():
     """Test reading a time field for DHR product."""
     f = Level3File(get_test_data('nids/KOUN_SDUS54_DHRTLX_201305202016'))
     assert f.metadata['avg_time'] == datetime(2013, 5, 20, 20, 18)
-
-
-def test_nwstg():
-    """Test reading a nids file pulled from the NWSTG."""
-    Level3File(get_test_data('nids/sn.last', as_file_obj=False))
 
 
 def test_fobj():

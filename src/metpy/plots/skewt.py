@@ -130,12 +130,15 @@ class SkewXAxis(maxis.XAxis):
         return SkewXTick(self.axes, None, major=major)
 
     # Needed to properly handle tight bbox
-    def _get_tick_bboxes(self, ticks, renderer):
+    def _get_ticklabel_bboxes(self, ticks, renderer):
         """Return lists of bboxes for ticks' label1's and label2's."""
         return ([tick.label1.get_window_extent(renderer)
                  for tick in ticks if tick.label1.get_visible() and tick.lower_in_bounds],
                 [tick.label2.get_window_extent(renderer)
                  for tick in ticks if tick.label2.get_visible() and tick.upper_in_bounds])
+
+    # Older name used on Matplotlib < 3.6
+    _get_tick_bboxes = _get_ticklabel_bboxes
 
     def get_view_interval(self):
         """Get the view interval."""
@@ -280,7 +283,7 @@ class SkewT:
         rect : tuple[float, float, float, float], optional
             Rectangle (left, bottom, width, height) in which to place the axes. This
             allows the user to place the axes at an arbitrary point on the figure.
-        aspect : float, int, or 'auto', optional
+        aspect : float, int, or Literal['auto'], optional
             Aspect ratio (i.e. ratio of y-scale to x-scale) to maintain in the plot.
             Defaults to 80.5. Passing the string ``'auto'`` tells matplotlib to handle
             the aspect ratio automatically (this is not recommended for SkewT).
@@ -344,9 +347,9 @@ class SkewT:
 
         Parameters
         ----------
-        pressure : array_like
+        pressure : array-like
             pressure values
-        t : array_like
+        t : array-like
             temperature values, can also be used for things like dew point
         args
             Other positional arguments to pass to :func:`~matplotlib.pyplot.plot`
@@ -377,13 +380,13 @@ class SkewT:
 
         Parameters
         ----------
-        pressure : array_like
+        pressure : array-like
             pressure values
-        u : array_like
+        u : array-like
             U (East-West) component of wind
-        v : array_like
+        v : array-like
             V (North-South) component of wind
-        c:
+        c : array-like, optional
             An optional array used to map colors to the barbs
         xloc : float, optional
             Position for the barbs, in normalized axes coordinates, where 0.0
@@ -394,7 +397,7 @@ class SkewT:
         y_clip_radius : float, optional
             Space, in normalized axes coordinates, to leave above/below plot
             before clipping wind barbs in the y-direction. Defaults to 0.08.
-        plot_units: `pint.unit`
+        plot_units: `pint.Unit`
             Units to plot in (performing conversion if necessary). Defaults to given units.
         kwargs
             Other keyword arguments to pass to :func:`~matplotlib.pyplot.barbs`
@@ -449,11 +452,11 @@ class SkewT:
 
         Parameters
         ----------
-        t0 : array_like, optional
+        t0 : array-like, optional
             Starting temperature values in Kelvin. If none are given, they will be
             generated using the current temperature range at the bottom of
             the plot.
-        pressure : array_like, optional
+        pressure : array-like, optional
             Pressure values to be included in the dry adiabats. If not
             specified, they will be linearly distributed across the current
             plotted pressure range.
@@ -467,7 +470,7 @@ class SkewT:
 
         See Also
         --------
-        :func:`~metpy.calc.thermo.dry_lapse`
+        :func:`~metpy.calc.dry_lapse`
         :meth:`plot_moist_adiabats`
         :class:`matplotlib.collections.LineCollection`
 
@@ -508,11 +511,11 @@ class SkewT:
 
         Parameters
         ----------
-        t0 : array_like, optional
+        t0 : array-like, optional
             Starting temperature values in Kelvin. If none are given, they will be
             generated using the current temperature range at the bottom of
             the plot.
-        pressure : array_like, optional
+        pressure : array-like, optional
             Pressure values to be included in the moist adiabats. If not
             specified, they will be linearly distributed across the current
             plotted pressure range.
@@ -526,7 +529,7 @@ class SkewT:
 
         See Also
         --------
-        :func:`~metpy.calc.thermo.moist_lapse`
+        :func:`~metpy.calc.moist_lapse`
         :meth:`plot_dry_adiabats`
         :class:`matplotlib.collections.LineCollection`
 
@@ -566,10 +569,10 @@ class SkewT:
 
         Parameters
         ----------
-        mixing_ratio : array_like, optional
+        mixing_ratio : array-like, optional
             Unitless mixing ratio values to plot. If none are given, default
             values are used.
-        pressure : array_like, optional
+        pressure : array-like, optional
             Pressure values to be included in the isohumes. If not
             specified, they will be linearly distributed across the current
             plotted pressure range up to 600 mb.
@@ -593,7 +596,8 @@ class SkewT:
         # Default mixing level values if necessary
         if mixing_ratio is None:
             mixing_ratio = np.array([0.0004, 0.001, 0.002, 0.004, 0.007, 0.01,
-                                     0.016, 0.024, 0.032]).reshape(-1, 1)
+                                     0.016, 0.024, 0.032])
+        mixing_ratio = mixing_ratio.reshape(-1, 1)
 
         # Set pressure range if necessary
         if pressure is None:
@@ -619,13 +623,13 @@ class SkewT:
 
         Parameters
         ----------
-        y : array_like
+        y : array-like
             1-dimensional array of numeric y-values
-        x1 : array_like
+        x1 : array-like
             1-dimensional array of numeric x-values
-        x2 : array_like
+        x2 : array-like
             1-dimensional array of numeric x-values
-        which : string
+        which : str
             Specifies if `positive`, `negative`, or `both` areas are being shaded.
             Will be overridden by where.
         kwargs
@@ -638,7 +642,7 @@ class SkewT:
         See Also
         --------
         :class:`matplotlib.collections.PolyCollection`
-        :func:`matplotlib.axes.Axes.fill_betweenx`
+        :meth:`matplotlib.axes.Axes.fill_betweenx`
 
         """
         fill_properties = {'positive':
@@ -674,7 +678,7 @@ class SkewT:
 
         Parameters
         ----------
-        pressure : array_like
+        pressure : array-like
             Pressure values
         tv : array_like
             Virtual temperature of environment
@@ -690,7 +694,7 @@ class SkewT:
         See Also
         --------
         :class:`matplotlib.collections.PolyCollection`
-        :func:`matplotlib.axes.Axes.fill_betweenx`
+        :meth:`matplotlib.axes.Axes.fill_betweenx`
 
         """
         return self.shade_area(pressure, tv_parcel, tv, which='positive', **kwargs)
@@ -703,7 +707,7 @@ class SkewT:
 
         Parameters
         ----------
-        pressure : array_like
+        pressure : array-like
             Pressure values
         tv : array_like
             Virtual temperature of environment
@@ -721,7 +725,7 @@ class SkewT:
         See Also
         --------
         :class:`matplotlib.collections.PolyCollection`
-        :func:`matplotlib.axes.Axes.fill_betweenx`
+        :meth:`matplotlib.axes.Axes.fill_betweenx`
 
         """
         if top == 'el':
@@ -761,7 +765,7 @@ class Hodograph:
         ----------
         ax : `matplotlib.axes.Axes`, optional
             The `Axes` instance used for plotting
-        component_range : value
+        component_range : int
             The maximum range of the plot. Used to set plot bounds and control the maximum
             number of grid rings needed.
 
@@ -785,7 +789,7 @@ class Hodograph:
 
         Parameters
         ----------
-        increment : value, optional
+        increment : int, optional
             The value increment between rings
         kwargs
             Other kwargs to control appearance of lines
@@ -833,9 +837,9 @@ class Hodograph:
 
         Parameters
         ----------
-        u : array_like
+        u : array-like
             u-component of wind
-        v : array_like
+        v : array-like
             v-component of wind
         kwargs
             Other keyword arguments to pass to :meth:`matplotlib.axes.Axes.plot`
@@ -861,9 +865,9 @@ class Hodograph:
 
         Parameters
         ----------
-        u : array_like
+        u : array-like
             u-component of wind
-        v : array_like
+        v : array-like
             v-component of wind
         kwargs
             Other keyword arguments to pass to :meth:`matplotlib.axes.Axes.quiver`
@@ -894,11 +898,11 @@ class Hodograph:
 
         Parameters
         ----------
-        u : array_like
+        u : array-like
             u-component of wind
-        v : array_like
+        v : array-like
             v-component of wind
-        c : array_like
+        c : array-like
             data to use for colormapping (e.g. heights, pressure, wind speed)
         intervals: array-like, optional
             Array of intervals for c to use in coloring the hodograph.

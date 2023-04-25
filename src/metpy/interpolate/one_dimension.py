@@ -2,10 +2,9 @@
 # Distributed under the terms of the BSD 3-Clause License.
 # SPDX-License-Identifier: BSD-3-Clause
 """Interpolate data along a single axis."""
-import warnings
-
 import numpy as np
 
+from .. import _warnings
 from ..cbook import broadcast_indices
 from ..package_tools import Exporter
 from ..xarray import preprocess_and_wrap
@@ -26,7 +25,7 @@ def interpolate_nans_1d(x, y, kind='linear'):
         1-dimensional array of numeric x-values
     y : array-like
         1-dimensional array of numeric y-values
-    kind : string
+    kind : str
         specifies the kind of interpolation x coordinate - 'linear' or 'log', optional.
         Defaults to 'linear'.
 
@@ -85,6 +84,7 @@ def interpolate_1d(x, xp, *args, axis=0, fill_value=np.nan, return_list_always=F
 
     Examples
     --------
+     >>> import metpy.interpolate
      >>> x = np.array([1., 2., 3., 4.])
      >>> y = np.array([1., 2., 3., 4.])
      >>> x_interp = np.array([2.5, 3.5])
@@ -102,24 +102,28 @@ def interpolate_1d(x, xp, *args, axis=0, fill_value=np.nan, return_list_always=F
     # Make x an array
     x = np.asanyarray(x).reshape(-1)
 
-    # Save number of dimensions in xp
-    ndim = xp.ndim
-
     # Sort input data
     sort_args = np.argsort(xp, axis=axis)
     sort_x = np.argsort(x)
 
-    # indices for sorting
-    sorter = broadcast_indices(xp, sort_args, ndim, axis)
+    # The shape after all arrays are broadcast to each other
+    # Can't use broadcast_shapes until numpy >=1.20 is our minimum
+    final_shape = np.broadcast(xp, *args).shape
 
-    # sort xp
+    # indices for sorting
+    sorter = broadcast_indices(sort_args, final_shape, axis)
+
+    # sort xp -- need to make sure it's been manually broadcast due to our use of indices
+    # along all axes.
+    xp = np.broadcast_to(xp, final_shape)
     xp = xp[sorter]
-    # Ensure pressure in increasing order
+
+    # Ensure source arrays are also in sorted order
     variables = [arr[sorter] for arr in args]
 
     # Make x broadcast with xp
     x_array = x[sort_x]
-    expand = [np.newaxis] * ndim
+    expand = [np.newaxis] * len(final_shape)
     expand[axis] = slice(None)
     x_array = x_array[tuple(expand)]
 
@@ -134,17 +138,17 @@ def interpolate_1d(x, xp, *args, axis=0, fill_value=np.nan, return_list_always=F
     # Warn if interpolated values are outside data bounds, will make these the values
     # at end of data range.
     if np.max(minv) == xp.shape[axis]:
-        warnings.warn('Interpolation point out of data bounds encountered')
+        _warnings.warn('Interpolation point out of data bounds encountered')
         minv2[minv == xp.shape[axis]] = xp.shape[axis] - 1
     if np.min(minv) == 0:
         minv2[minv == 0] = 1
 
     # Get indices for broadcasting arrays
-    above = broadcast_indices(xp, minv2, ndim, axis)
-    below = broadcast_indices(xp, minv2 - 1, ndim, axis)
+    above = broadcast_indices(minv2, final_shape, axis)
+    below = broadcast_indices(minv2 - 1, final_shape, axis)
 
     if np.any(x_array < xp[below]):
-        warnings.warn('Interpolation point out of data bounds encountered')
+        _warnings.warn('Interpolation point out of data bounds encountered')
 
     # Create empty output list
     ret = []

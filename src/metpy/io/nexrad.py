@@ -49,7 +49,7 @@ def az_rate(val):
 
 
 def bzip_blocks_decompress_all(data):
-    """Decompress all of the bzip2-ed blocks.
+    """Decompress all the bzip2-ed blocks.
 
     Returns the decompressed data as a `bytearray`.
     """
@@ -61,15 +61,15 @@ def bzip_blocks_decompress_all(data):
         try:
             frames += bz2.decompress(data[offset:offset + block_cmp_bytes])
             offset += block_cmp_bytes
-        except OSError:
+        except OSError as e:
             # If we've decompressed any frames, this is an error mid-stream, so warn, stop
             # trying to decompress and let processing proceed
             if frames:
                 logging.warning('Error decompressing bz2 block stream at offset: %d',
                                 offset - 4)
                 break
-            else:  # Otherwise, this isn't a bzip2 stream, so bail
-                raise ValueError('Not a bz2 stream.')
+            # Otherwise, this isn't a bzip2 stream, so bail
+            raise ValueError('Not a bz2 stream.') from e
     return frames
 
 
@@ -120,19 +120,19 @@ class Level2File:
     ----------
     stid : str
         The ID of the radar station
-    dt : Datetime instance
+    dt : `~datetime.datetime`
         The date and time of the data
-    vol_hdr : namedtuple
+    vol_hdr : `collections.namedtuple`
         The unpacked volume header
-    sweeps : list of tuples
+    sweeps : list[tuple]
         Data for each of the sweeps found in the file
-    rda_status : namedtuple, optional
+    rda_status : `collections.namedtuple`, optional
         Unpacked RDA status information, if found
-    maintenance_data : namedtuple, optional
+    maintenance_data : `collections.namedtuple`, optional
         Unpacked maintenance data information, if found
     maintenance_data_desc : dict, optional
         Descriptions of maintenance data fields, if maintenance data present
-    vcp_info : namedtuple, optional
+    vcp_info : `collections.namedtuple`, optional
         Unpacked VCP information, if found
     clutter_filter_bypass_map : dict, optional
         Unpacked clutter filter bypass map, if present
@@ -396,8 +396,15 @@ class Level2File:
         from ._nexrad_msgs.msg3 import descriptions, fields
         self.maintenance_data_desc = descriptions
         msg_fmt = DictStruct(fields, '>')
+
+        # The only version we decode isn't very flexible, so just skip if we don't have the
+        # right length, which happens with older data.
+        if msg_hdr.size_hw * 2 - self.msg_hdr_fmt.size != msg_fmt.size:
+            log.info('Length of message 3 is %d instead of expected %d; this is likely the '
+                     'legacy format. Skipping...', 2 * msg_hdr.size_hw)
+            return
+
         self.maintenance_data = self._buffer.read_struct(msg_fmt)
-        self._check_size(msg_hdr, msg_fmt.size)
 
     vcp_fmt = NamedStruct([('size_hw', 'H'), ('pattern_type', 'H'),
                            ('num', 'H'), ('num_el_cuts', 'H'),
@@ -439,10 +446,13 @@ class Level2File:
 
     def _decode_msg5(self, msg_hdr):
         vcp_info = self._buffer.read_struct(self.vcp_fmt)
-        els = [self._buffer.read_struct(self.vcp_el_fmt) for _ in range(vcp_info.num_el_cuts)]
-        self.vcp_info = vcp_info._replace(els=els)
-        self._check_size(msg_hdr,
-                         self.vcp_fmt.size + vcp_info.num_el_cuts * self.vcp_el_fmt.size)
+        # Just skip the vcp info if it says size is 0:
+        if vcp_info.size_hw:
+            els = [self._buffer.read_struct(self.vcp_el_fmt)
+                   for _ in range(vcp_info.num_el_cuts)]
+            self.vcp_info = vcp_info._replace(els=els)
+            self._check_size(msg_hdr,
+                             self.vcp_fmt.size + vcp_info.num_el_cuts * self.vcp_el_fmt.size)
 
     def _decode_msg13(self, msg_hdr):
         data = self._buffer_segment(msg_hdr)
@@ -491,9 +501,10 @@ class Level2File:
         data = self._buffer_segment(msg_hdr)
         if data:
             date, time, num_el, *data = struct.Struct(f'>{len(data) // 2:d}h').unpack(data)
-            if num_el == 0:
-                log.info('Message 15 num_el is 0--likely legacy clutter filter notch width. '
-                         'Skipping...')
+
+            if not 0 < num_el <= 5:
+                log.info('Message 15 num_el is outside (0, 5]--likely legacy clutter filter '
+                         'notch width. Skipping...')
                 return
 
             # time is in "minutes since midnight", need to pass as ms since midnight
@@ -915,8 +926,11 @@ class GenericDigitalMapper(DataMapper):
 
     def __init__(self, prod):
         """Initialize the mapper by pulling out all the information from the product."""
+        # Need to treat this value as unsigned, so we can use the full 16-bit range. This
+        # is necessary at least for the DPR product, otherwise it has a value of -1.
+        max_data_val = prod.thresholds[5] & 0xFFFF
+
         # Values will be [0, max] inclusive, so need to add 1 to max value to get proper size.
-        max_data_val = prod.thresholds[5]
         super().__init__(max_data_val + 1)
 
         scale = float32(prod.thresholds[0], prod.thresholds[1])
@@ -1019,16 +1033,16 @@ class Level3File:
     r"""Handle reading the wide array of NEXRAD Level 3 (NIDS) product files.
 
     This class attempts to decode every byte that is in a given product file.
-    It supports all of the various compression formats that exist for these
+    It supports all the various compression formats that exist for these
     products in the wild.
 
     Attributes
     ----------
     metadata : dict
         Various general metadata available from the product
-    header : namedtuple
+    header : `collections.namedtuple`
         Decoded product header
-    prod_desc : namedtuple
+    prod_desc : `collections.namedtuple`
         Decoded product description block
     siteID : str
         ID of the site found in the header, empty string if none found
@@ -1041,8 +1055,8 @@ class Level3File:
     product_name : str
         Name of the product contained in file
     max_range : float
-        Maximum range of the product, taken from the NIDS ICD
-    map_data : Mapper
+        Maximum kilometer range of the product, taken from the NIDS ICD
+    map_data : `DataMapper`
         Class instance mapping data int values to proper floating point values
     sym_block : list, optional
         Any symbology block packets that were found
@@ -2242,7 +2256,7 @@ class Level3File:
                 scale = 1
             vals = self._read_trends()
             if code in (1, 2):
-                ret[f'{key} Limited'] = [bool(v > 700) for v in vals]
+                ret[f'{key} Limited'] = [v > 700 for v in vals]
                 vals = [v - 1000 if v > 700 else v for v in vals]
             ret[key] = [v * scale for v in vals]
 

@@ -21,14 +21,15 @@ from inspect import signature
 from itertools import chain
 import logging
 import re
-import warnings
 
 import numpy as np
 from pyproj import CRS, Proj
 import xarray as xr
 
+from . import _warnings
 from ._vendor.xarray import either_dict_or_kwargs, expanded_indexer, is_dict_like
-from .units import _mutate_arguments, DimensionalityError, UndefinedUnitError, units
+from .units import (_mutate_arguments, DimensionalityError, is_quantity, UndefinedUnitError,
+                    units)
 
 __all__ = ('MetPyDataArrayAccessor', 'MetPyDatasetAccessor', 'grid_deltas_from_dataarray')
 metpy_axes = ['time', 'vertical', 'y', 'latitude', 'x', 'longitude']
@@ -105,7 +106,7 @@ _axis_identifier_error = ('Given axis is not valid. Must be an axis number, a di
 class MetPyDataArrayAccessor:
     r"""Provide custom attributes and methods on xarray DataArrays for MetPy functionality.
 
-    This accessor provides several convenient attributes and methods through the `.metpy`
+    This accessor provides several convenient attributes and methods through the ``.metpy``
     attribute on a DataArray. For example, MetPy can identify the coordinate corresponding
     to a particular axis (given sufficient metadata):
 
@@ -130,15 +131,20 @@ class MetPyDataArrayAccessor:
     @property
     def units(self):
         """Return the units of this DataArray as a `pint.Unit`."""
-        if isinstance(self._data_array.variable._data, units.Quantity):
+        if is_quantity(self._data_array.variable._data):
             return self._data_array.variable._data.units
         else:
-            return units.parse_units(self._data_array.attrs.get('units', 'dimensionless'))
+            axis = self._data_array.attrs.get('_metpy_axis', '')
+            if 'latitude' in axis or 'longitude' in axis:
+                default_unit = 'degrees'
+            else:
+                default_unit = 'dimensionless'
+            return units.parse_units(self._data_array.attrs.get('units', default_unit))
 
     @property
     def magnitude(self):
         """Return the magnitude of the data values of this DataArray (i.e., without units)."""
-        if isinstance(self._data_array.data, units.Quantity):
+        if is_quantity(self._data_array.data):
             return self._data_array.data.magnitude
         else:
             return self._data_array.data
@@ -153,7 +159,7 @@ class MetPyDataArrayAccessor:
         will be loaded into memory by this operation. Do not utilize on moderate- to
         large-sized remote datasets before subsetting!
         """
-        if isinstance(self._data_array.data, units.Quantity):
+        if is_quantity(self._data_array.data):
             return self._data_array.data
         else:
             return units.Quantity(self._data_array.data, self.units)
@@ -173,6 +179,22 @@ class MetPyDataArrayAccessor:
 
         """
         return self.quantify().copy(data=self.unit_array.to(units))
+
+    def convert_to_base_units(self):
+        """Return new DataArray with values converted to base units.
+
+        See Also
+        --------
+        convert_units
+
+        Notes
+        -----
+        Any cached/lazy-loaded data (except that in a Dask array) will be loaded into memory
+        by this operation. Do not utilize on moderate- to large-sized remote datasets before
+        subsetting!
+
+        """
+        return self.quantify().copy(data=self.unit_array.to_base_units())
 
     def convert_coordinate_units(self, coord, units):
         """Return new DataArray with specified coordinate converted to different units.
@@ -206,7 +228,7 @@ class MetPyDataArrayAccessor:
         subsetting!
         """
         if (
-            not isinstance(self._data_array.data, units.Quantity)
+            not is_quantity(self._data_array.data)
             and np.issubdtype(self._data_array.data.dtype, np.number)
         ):
             # Only quantify if not already quantified and is quantifiable
@@ -219,7 +241,7 @@ class MetPyDataArrayAccessor:
 
     def dequantify(self):
         """Return a new DataArray with the data as magnitude and the units as an attribute."""
-        if isinstance(self._data_array.data, units.Quantity):
+        if is_quantity(self._data_array.data):
             # Only dequantify if quantified
             dequantified_dataarray = self._data_array.copy(
                 data=self._data_array.data.magnitude
@@ -257,6 +279,11 @@ class MetPyDataArrayAccessor:
     def pyproj_crs(self):
         """Return the coordinate reference system (CRS) as a pyproj object."""
         return self.crs.to_pyproj()
+
+    @property
+    def pyproj_proj(self):
+        """Return the Proj object corresponding to the coordinate reference system (CRS)."""
+        return Proj(self.pyproj_crs)
 
     def _fixup_coordinate_map(self, coord_map):
         """Ensure sure we have coordinate variables in map, not coordinate names."""
@@ -352,8 +379,7 @@ class MetPyDataArrayAccessor:
         # Ambiguous axis, raise warning and do not parse
         varname = (' "' + self._data_array.name + '"'
                    if self._data_array.name is not None else '')
-        warnings.warn('More than one ' + axis + ' coordinate present for variable'
-                      + varname + '.')
+        _warnings.warn(f'More than one {axis} coordinate present for variable {varname}.')
         coord_lists[axis] = []
 
     def _metpy_axis_search(self, metpy_axis):
@@ -408,9 +434,46 @@ class MetPyDataArrayAccessor:
         access a single coordinate, use the appropriate attribute on the accessor, or use tuple
         unpacking.
 
+        If latitude and/or longitude are requested here, and yet are not present on the
+        DataArray, an on-the-fly computation from the CRS and y/x dimension coordinates is
+        attempted.
+
         """
+        latitude = None
+        longitude = None
         for arg in args:
-            yield self._axis(arg)
+            try:
+                yield self._axis(arg)
+            except AttributeError as exc:
+                if (
+                    (arg == 'latitude' and latitude is None)
+                    or (arg == 'longitude' and longitude is None)
+                ):
+                    # Try to compute on the fly
+                    try:
+                        latitude, longitude = _build_latitude_longitude(self._data_array)
+                    except Exception:
+                        # Attempt failed, re-raise original error
+                        raise exc from None
+                    # Otherwise, warn and yield result
+                    _warnings.warn(
+                        'Latitude and longitude computed on-demand, which may be an '
+                        'expensive operation. To avoid repeating this computation, assign '
+                        'these coordinates ahead of time with '
+                        '.metpy.assign_latitude_longitude().'
+                    )
+                    if arg == 'latitude':
+                        yield latitude
+                    else:
+                        yield longitude
+                elif arg == 'latitude' and latitude is not None:
+                    # We have this from previous computation
+                    yield latitude
+                elif arg == 'longitude' and longitude is not None:
+                    # We have this from previous computation
+                    yield longitude
+                else:
+                    raise exc
 
     @property
     def time(self):
@@ -443,7 +506,7 @@ class MetPyDataArrayAccessor:
         return self._axis('longitude')
 
     def coordinates_identical(self, other):
-        """Return whether or not the coordinates of other match this DataArray's."""
+        """Return whether the coordinates of other match this DataArray's."""
         return (len(self._data_array.coords) == len(other.coords)
                 and all(coord_name in other.coords and other[coord_name].identical(coord_var)
                         for coord_name, coord_var in self._data_array.coords.items()))
@@ -453,6 +516,36 @@ class MetPyDataArrayAccessor:
         """Return the time difference of the data in seconds (to microsecond precision)."""
         us_diffs = np.diff(self._data_array.values).astype('timedelta64[us]').astype('int64')
         return units.Quantity(us_diffs / 1e6, 's')
+
+    @property
+    def grid_deltas(self):
+        """Return the horizontal dimensional grid deltas suitable for vector derivatives."""
+        if (
+                (hasattr(self, 'crs')
+                 and self.crs._attrs['grid_mapping_name'] == 'latitude_longitude')
+                or (hasattr(self, 'longitude') and self.longitude.squeeze().ndim == 1
+                    and hasattr(self, 'latitude') and self.latitude.squeeze().ndim == 1)
+        ):
+            # Calculate dx and dy on ellipsoid (on equator and 0 deg meridian, respectively)
+            from .calc.tools import nominal_lat_lon_grid_deltas
+            crs = getattr(self, 'pyproj_crs', CRS('+proj=latlon'))
+            dx, dy = nominal_lat_lon_grid_deltas(
+                self.longitude.metpy.unit_array,
+                self.latitude.metpy.unit_array,
+                crs.get_geod()
+            )
+        else:
+            # Calculate dx and dy in projection space
+            try:
+                dx = np.diff(self.x.metpy.unit_array)
+                dy = np.diff(self.y.metpy.unit_array)
+            except AttributeError:
+                raise AttributeError(
+                    'Grid deltas cannot be calculated since horizontal dimension coordinates '
+                    'cannot be found.'
+                ) from None
+
+        return {'dx': dx, 'dy': dy}
 
     def find_axis_name(self, axis):
         """Return the name of the axis corresponding to the given identifier.
@@ -513,7 +606,7 @@ class MetPyDataArrayAccessor:
             except ValueError:
                 # Intercept ValueError when axis type found but not dimension coordinate
                 raise AttributeError(f'Requested {axis} dimension coordinate but {axis} '
-                                     f'coordinate {name} is not a dimension')
+                                     f'coordinate {name} is not a dimension') from None
         else:
             # Otherwise, not valid
             raise ValueError(_axis_identifier_error)
@@ -690,7 +783,7 @@ class MetPyDatasetAccessor:
 
         Parameters
         ----------
-        varname : str or iterable of str, optional
+        varname : str or Sequence[str], optional
             Name of the variable(s) to extract from the dataset while parsing for CF metadata.
             Defaults to all variables.
         coordinates : dict, optional
@@ -724,13 +817,13 @@ class MetPyDatasetAccessor:
 
         # Check for crs conflict
         if varname == 'metpy_crs':
-            warnings.warn(
+            _warnings.warn(
                 'Attempting to parse metpy_crs as a data variable. Unexpected merge conflicts '
                 'may occur.'
             )
         elif 'metpy_crs' in var.coords and (var.coords['metpy_crs'].size > 1 or not isinstance(
                 var.coords['metpy_crs'].item(), CFProjection)):
-            warnings.warn(
+            _warnings.warn(
                 'metpy_crs already present as a non-CFProjection coordinate. Unexpected '
                 'merge conflicts may occur.'
             )
@@ -896,8 +989,8 @@ class MetPyDatasetAccessor:
 
         # Calculate latitude and longitude from grid_prototype, if it exists, and assign
         if grid_prototype is None:
-            warnings.warn('No latitude and longitude assigned since horizontal coordinates '
-                          'were not found')
+            _warnings.warn('No latitude and longitude assigned since horizontal coordinates '
+                           'were not found')
             return self._dataset
         else:
             latitude, longitude = _build_latitude_longitude(grid_prototype)
@@ -941,8 +1034,8 @@ class MetPyDatasetAccessor:
 
         # Calculate y and x from grid_prototype, if it exists, and assign
         if grid_prototype is None:
-            warnings.warn('No y and x coordinates assigned since horizontal coordinates '
-                          'were not found')
+            _warnings.warn('No y and x coordinates assigned since horizontal coordinates '
+                           'were not found')
             return self._dataset
         else:
             y, x = _build_y_x(grid_prototype, tolerance)
@@ -955,7 +1048,7 @@ class MetPyDatasetAccessor:
         ----------
         attribute : str,
             Name of attribute to update
-        mapping : dict or callable
+        mapping : dict or Callable
             Either a dict, with keys as variable names and values as attribute values to set,
             or a callable, which must accept one positional argument (variable name) and
             arbitrary keyword arguments (all existing variable attributes). If a variable name
@@ -972,7 +1065,7 @@ class MetPyDatasetAccessor:
             old_mapping = mapping
 
             def mapping(varname, **kwargs):
-                return old_mapping.get(varname, None)
+                return old_mapping.get(varname)
 
         # Define mapping function for Dataset.map
         def mapping_func(da):
@@ -1093,7 +1186,7 @@ def _build_latitude_longitude(da):
     """Build latitude/longitude coordinates from DataArray's y/x coordinates."""
     y, x = da.metpy.coordinates('y', 'x')
     xx, yy = np.meshgrid(x.values, y.values)
-    lonlats = np.stack(Proj(da.metpy.pyproj_crs)(xx, yy, inverse=True, radians=False), axis=-1)
+    lonlats = np.stack(da.metpy.pyproj_proj(xx, yy, inverse=True, radians=False), axis=-1)
     longitude = xr.DataArray(lonlats[..., 0], dims=(y.name, x.name),
                              coords={y.name: y, x.name: x},
                              attrs={'units': 'degrees_east', 'standard_name': 'longitude'})
@@ -1114,7 +1207,7 @@ def _build_y_x(da, tolerance):
                          'must be 2D')
 
     # Convert to projected y/x
-    xxyy = np.stack(Proj(da.metpy.pyproj_crs)(
+    xxyy = np.stack(da.metpy.pyproj_proj(
         longitude.values,
         latitude.values,
         inverse=False,
@@ -1129,8 +1222,8 @@ def _build_y_x(da, tolerance):
         y_dim = latitude.metpy.find_axis_number('y')
         x_dim = latitude.metpy.find_axis_number('x')
     except AttributeError:
-        warnings.warn('y and x dimensions unable to be identified. Assuming [..., y, x] '
-                      'dimension order.')
+        _warnings.warn('y and x dimensions unable to be identified. Assuming [..., y, x] '
+                       'dimension order.')
         y_dim, x_dim = 0, 1
     if (np.all(np.ptp(xxyy[..., 0], axis=y_dim) < tolerance)
             and np.all(np.ptp(xxyy[..., 1], axis=x_dim) < tolerance)):
@@ -1158,7 +1251,7 @@ def preprocess_and_wrap(broadcast=None, wrap_like=None, match_unit=False, to_mag
 
     Parameters
     ----------
-    broadcast : iterable of str or None
+    broadcast : Sequence[str] or None
         Iterable of string labels for arguments to broadcast against each other using xarray,
         assuming they are supplied as `xarray.DataArray`. No automatic broadcasting will occur
         with default of None.
@@ -1208,7 +1301,7 @@ def preprocess_and_wrap(broadcast=None, wrap_like=None, match_unit=False, to_mag
             # Cast all Variables to their data and warn
             # (need to do before match finding, since we don't want to rewrap as Variable)
             def cast_variables(arg, arg_name):
-                warnings.warn(
+                _warnings.warn(
                     f'Argument {arg_name} given as xarray Variable...casting to its data. '
                     'xarray DataArrays are recommended instead.'
                 )
@@ -1261,7 +1354,7 @@ def _wrap_output_like_matching_units(result, match):
         return result if output_xarray else result.metpy.unit_array
     else:
         result = (
-            result.to(match_units) if isinstance(result, units.Quantity)
+            result.to(match_units) if is_quantity(result)
             else units.Quantity(result, match_units)
         )
         return (
@@ -1277,15 +1370,14 @@ def _wrap_output_like_not_matching_units(result, match):
         return result if output_xarray else result.metpy.unit_array
     # Determine if need to upcast to Quantity
     if (
-        not isinstance(result, units.Quantity)
-        and (
-            isinstance(match, units.Quantity)
-            or (output_xarray and isinstance(match.data, units.Quantity))
+        not is_quantity(result) and (
+            is_quantity(match) or (output_xarray and is_quantity(match.data))
         )
     ):
         result = units.Quantity(result)
     return (
-        xr.DataArray(result, coords=match.coords, dims=match.dims) if output_xarray
+        xr.DataArray(result, coords=match.coords, dims=match.dims)
+        if output_xarray and result is not None
         else result
     )
 
@@ -1361,7 +1453,7 @@ def grid_deltas_from_dataarray(f, kind='default'):
 
     See Also
     --------
-    lat_lon_grid_deltas
+    `~metpy.calc.lat_lon_grid_deltas`
 
     """
     from metpy.calc import lat_lon_grid_deltas
@@ -1390,8 +1482,8 @@ def grid_deltas_from_dataarray(f, kind='default'):
             y_dim = latitude.metpy.find_axis_number('y')
             x_dim = latitude.metpy.find_axis_number('x')
         except AttributeError:
-            warnings.warn('y and x dimensions unable to be identified. Assuming [..., y, x] '
-                          'dimension order.')
+            _warnings.warn('y and x dimensions unable to be identified. Assuming [..., y, x] '
+                           'dimension order.')
             y_dim, x_dim = -2, -1
 
         # Get geod if it exists, otherwise fall back to PyProj default
@@ -1430,98 +1522,6 @@ def dataarray_arguments(bound_args):
             yield value
 
 
-def add_grid_arguments_from_xarray(func):
-    """Fill in optional arguments like dx/dy from DataArray arguments."""
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        bound_args = signature(func).bind(*args, **kwargs)
-        bound_args.apply_defaults()
-
-        # Search for DataArray with valid latitude and longitude coordinates to find grid
-        # deltas and any other needed parameter
-        grid_prototype = None
-        for da in dataarray_arguments(bound_args):
-            if hasattr(da.metpy, 'latitude') and hasattr(da.metpy, 'longitude'):
-                grid_prototype = da
-                break
-
-        # Fill in x_dim/y_dim
-        if (
-            grid_prototype is not None
-            and 'x_dim' in bound_args.arguments
-            and 'y_dim' in bound_args.arguments
-        ):
-            try:
-                bound_args.arguments['x_dim'] = grid_prototype.metpy.find_axis_number('x')
-                bound_args.arguments['y_dim'] = grid_prototype.metpy.find_axis_number('y')
-            except AttributeError:
-                # If axis number not found, fall back to default but warn.
-                warnings.warn('Horizontal dimension numbers not found. Defaulting to '
-                              '(..., Y, X) order.')
-
-        # Fill in vertical_dim
-        if (
-            grid_prototype is not None
-            and 'vertical_dim' in bound_args.arguments
-        ):
-            try:
-                bound_args.arguments['vertical_dim'] = (
-                    grid_prototype.metpy.find_axis_number('vertical')
-                )
-            except AttributeError:
-                # If axis number not found, fall back to default but warn.
-                warnings.warn(
-                    'Vertical dimension number not found. Defaulting to (..., Z, Y, X) order.'
-                )
-
-        # Fill in dz
-        if (
-            grid_prototype is not None
-            and 'dz' in bound_args.arguments
-            and bound_args.arguments['dz'] is None
-        ):
-            try:
-                vertical_coord = grid_prototype.metpy.vertical
-                bound_args.arguments['dz'] = np.diff(vertical_coord.metpy.unit_array)
-            except (AttributeError, ValueError):
-                # Skip, since this only comes up in advection, where dz is optional (may not
-                # need vertical at all)
-                pass
-
-        # Fill in dx/dy
-        if (
-            'dx' in bound_args.arguments and bound_args.arguments['dx'] is None
-            and 'dy' in bound_args.arguments and bound_args.arguments['dy'] is None
-        ):
-            if grid_prototype is not None:
-                bound_args.arguments['dx'], bound_args.arguments['dy'] = (
-                    grid_deltas_from_dataarray(grid_prototype, kind='actual')
-                )
-            elif 'dz' in bound_args.arguments:
-                # Handle advection case, allowing dx/dy to be None but dz to not be None
-                if bound_args.arguments['dz'] is None:
-                    raise ValueError(
-                        'Must provide dx, dy, and/or dz arguments or input DataArray with '
-                        'proper coordinates.'
-                    )
-            else:
-                raise ValueError('Must provide dx/dy arguments or input DataArray with '
-                                 'latitude/longitude coordinates.')
-
-        # Fill in latitude
-        if 'latitude' in bound_args.arguments and bound_args.arguments['latitude'] is None:
-            if grid_prototype is not None:
-                bound_args.arguments['latitude'] = (
-                    grid_prototype.metpy.latitude
-                )
-            else:
-                raise ValueError('Must provide latitude argument or input DataArray with '
-                                 'latitude/longitude coordinates.')
-
-        return func(*bound_args.args, **bound_args.kwargs)
-    return wrapper
-
-
 def add_vertical_dim_from_xarray(func):
     """Fill in optional vertical_dim from DataArray argument."""
     @functools.wraps(func)
@@ -1537,7 +1537,7 @@ def add_vertical_dim_from_xarray(func):
                     bound_args.arguments['vertical_dim'] = a.metpy.find_axis_number('vertical')
                 except AttributeError:
                     # If axis number not found, fall back to default but warn.
-                    warnings.warn(
+                    _warnings.warn(
                         'Vertical dimension number not found. Defaulting to initial dimension.'
                     )
 

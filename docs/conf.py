@@ -54,7 +54,8 @@ sphinx_gallery_conf = {
     'filename_pattern': r'\.py',
     'backreferences_dir': str(Path('api') / 'generated'),
     'default_thumb_file': str(Path('_static') / 'metpy_150x150_white_bg.png'),
-    'abort_on_example_error': True
+    'abort_on_example_error': True,
+    'reset_modules': [lambda conf, fname: sys.modules.pop('pint', None)]
 }
 
 # Turn off code and image links for embedded mpl plots
@@ -68,13 +69,34 @@ myst_heading_anchors = 2
 
 # Set up mapping for other projects' docs
 intersphinx_mapping = {
-                       'pint': ('https://pint.readthedocs.io/en/stable/', None),
+                       'cartopy': ('https://scitools.org.uk/cartopy/docs/latest/', None),
                        'matplotlib': ('https://matplotlib.org/stable/', None),
-                       'python': ('https://docs.python.org/3/', None),
                        'numpy': ('https://numpy.org/doc/stable/', None),
-                       'scipy': ('https://docs.scipy.org/doc/scipy/reference/', None),
+                       'pandas': ('https://pandas.pydata.org/docs/', None),
+                       'pint': ('https://pint.readthedocs.io/en/stable/', None),
+                       'pyproj': ('https://pyproj4.github.io/pyproj/stable/', None),
+                       'python': ('https://docs.python.org/3/', None),
+                       'scipy': ('https://docs.scipy.org/doc/scipy/', None),
                        'xarray': ('https://docs.xarray.dev/en/stable/', None)
                        }
+
+nitpicky = True
+nitpick_ignore = [
+    ('py:class', 'M'), ('py:class', 'N'), ('py:class', 'P'), ('py:class', '2'),
+    ('py:class', 'optional'), ('py:class', 'array-like'), ('py:class', 'file-like object'),
+    # For traitlets docstrings
+    ('py:class', 'All'), ('py:class', 'callable'),
+    # Next two are from Python dict docstring that we inherit
+    ('py:class', 'a shallow copy of D'),
+    ('py:class', 'v, remove specified key and return the corresponding value.')
+]
+
+nitpick_ignore_regex = [
+    ('py:class', r'default:.*'),  # For some traitlets docstrings
+    ('py:class', r'.*object providing a view on.*'),  # Python dict docstring
+    ('py:class', r'None.  .*'),  # Python dict docstring
+    ('py:class', r'.*D\[k\].*'),  # Python dict docstring
+]
 
 # Tweak how docs are formatted
 napoleon_use_rtype = False
@@ -90,7 +112,7 @@ source_suffix = ['.rst', '.md']
 
 # Controlling automatically generating summary tables in the docs
 autosummary_generate = True
-autosummary_imported_members = True
+autosummary_ignore_module_all = False
 
 # The encoding of source files.
 # source_encoding = 'utf-8-sig'
@@ -369,6 +391,9 @@ texinfo_documents = [
 # If true, do not generate a @detailmenu in the "Top" node's menu.
 # texinfo_no_detailmenu = False
 
+# -- Options for linkcheck builder ----------------------------------------
+
+# List of regular expressions, links matching them will be ignored.
 linkcheck_ignore = [
     r'https://codecov.io/github/Unidata/MetPy',
     r'https://www\.youtube\.com/watch\?v=[\d\w\-_]+',
@@ -380,12 +405,25 @@ linkcheck_ignore = [
     # This one appears to be blocking robots
     r'https://doi\.org/10\.1088/0026-1394/45/2/004',
     # Frequently fails the linkchecker
-    r'https://ams\.confex\.com/ams/[\d\w]+/meetingapp\.cgi/.*'
+    r'https://ams\.confex\.com/ams/[\d\w]+/meetingapp\.cgi/.*',
+    # Can't seem to get around inconsistent retry errors
+    r'https://doi\.org/10\.1289/ehp\.1206273',
+    # Couldn't fix these 403's with user agents
+    r'https://doi\.org/10\.1029/2010GL045777',
+    r'https://doi\.org/10\.1098/rspa\.2004\.1430'
     ]
 
+# Dictionary of URL redirects allowed
 linkcheck_allowed_redirects = {
     r'https://pint\.readthedocs\.io': r'https://pint\.readthedocs\.io/en/stable/',
     r'https://conda.io/docs/': r'https://conda.io/en/latest/',
     r'https://github.com/Unidata/MetPy/issues/new/choose': r'https://github.com/login.*choose',
-    r'https://doi.org/.*': r'https://.*'
+    r'https://doi.org/.*': r'https://.*',
+    r'https://gitter.im/Unidata/MetPy': r'https://app.gitter.im/.*MetPy.*'
+}
+
+# Domain-specific HTTP headers for requests
+linkcheck_request_headers = {
+    r'https://docs.github.com/': {'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux i686; '
+                                                'rv:24.0) Gecko/20100101 Firefox/24.0'}
 }

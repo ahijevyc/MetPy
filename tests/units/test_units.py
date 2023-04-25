@@ -9,7 +9,8 @@ import pandas as pd
 import pytest
 
 from metpy.testing import assert_array_almost_equal, assert_array_equal, assert_nan
-from metpy.units import check_units, concatenate, pandas_dataframe_to_unit_arrays, units
+from metpy.units import (check_units, concatenate, is_quantity,
+                         pandas_dataframe_to_unit_arrays, units)
 
 
 def test_concatenate():
@@ -104,6 +105,16 @@ def test_bad(func, args, kwargs, bad_parts):
         assert 'unitless_const' not in message
 
 
+@pytest.mark.parametrize('func', test_funcs, ids=['some kwargs', 'all kwargs', 'all pos'])
+def test_bad_masked_array(func):
+    """Test getting a masked array-specific message when missing units."""
+    with pytest.raises(ValueError) as exc:
+        func(np.ma.array([30]), 1000 * units.mbar, 1.0 * units('kg/m^3'), 1, 5.)
+
+    message = str(exc.value)
+    assert 'units.Quantity' in message
+
+
 def test_pandas_units_simple():
     """Simple unit attachment to two columns."""
     df = pd.DataFrame(data=[[1, 4], [2, 5], [3, 6]], columns=['cola', 'colb'])
@@ -128,7 +139,7 @@ def test_pandas_units_on_dataframe():
 
 
 @pytest.mark.filterwarnings("ignore:Pandas doesn't allow columns to be created")
-def test_pandas_units_on_dataframe_not_all_united():
+def test_pandas_units_on_dataframe_not_all_with_units():
     """Unit attachment with units attribute with a column with no units."""
     df = pd.DataFrame(data=[[1, 4], [2, 5], [3, 6]], columns=['cola', 'colb'])
     df.units = {'cola': 'kilometers'}
@@ -165,6 +176,18 @@ def test_added_degrees_units():
     assert units('degrees_north').to_base_units().units == units.radian
     assert units('degrees_east') == units('degrees')
     assert units('degrees_east').to_base_units().units == units.radian
+
+
+def test_is_quantity():
+    """Test is_quantity properly works."""
+    assert is_quantity(1 * units.m)
+    assert not is_quantity(np.array([1]))
+
+
+def test_is_quantity_multiple():
+    """Test is_quantity with multiple inputs."""
+    assert is_quantity(1 * units.m, np.array([4.]) * units.degree)
+    assert not is_quantity(1 * units.second, np.array([5., 2.]))
 
 
 def test_gpm_unit():
@@ -205,7 +228,8 @@ def test_percent_units():
             '(J kg-1)(m s-1)-1', units.m / units.s,
             marks=pytest.mark.xfail(reason='hgrecco/pint#1485')
         ),
-        ('(J kg-1)(m s-1)(-1)', units.m ** 3 / units.s ** 3)
+        ('(J kg-1)(m s-1)(-1)', units.m ** 3 / units.s ** 3),
+        ('/s', units.s ** -1)
     )
 )
 def test_udunits_power_syntax(unit_str, pint_unit):
