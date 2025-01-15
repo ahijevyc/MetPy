@@ -922,16 +922,6 @@ def lfc(pressure, temperature, dewpoint, parcel_temperature_profile=None, dewpoi
        Renamed ``dewpt``,``dewpoint_start`` parameters to ``dewpoint``, ``dewpoint_start``
 
     """
-    # Default to surface parcel if no profile or starting pressure level is given
-    if parcel_temperature_profile is None:
-        pressure, temperature, dewpoint = _remove_nans(pressure, temperature, dewpoint)
-        new_profile = parcel_profile_with_lcl(pressure, temperature, dewpoint)
-        pressure, temperature, dewpoint, parcel_temperature_profile = new_profile
-        parcel_temperature_profile = parcel_temperature_profile.to(temperature.units)
-    else:
-        new_profile = _remove_nans(pressure, temperature, dewpoint, parcel_temperature_profile)
-        pressure, temperature, dewpoint, parcel_temperature_profile = new_profile
-
     if dewpoint_start is None:
         dewpoint_start = dewpoint[0]
 
@@ -1116,7 +1106,7 @@ def el(pressure, temperature, parcel_temperature_profile):
     >>> # compute parcel profile temperature
     >>> prof = parcel_profile(p, T[0], Td[0]).to('degC')
     >>> # calculate EL
-    >>> el(p, T, Td, prof)
+    >>> el(p, T, prof)
     (<Quantity(111.739463, 'hectopascal')>, <Quantity(-76.3112792, 'degree_Celsius')>)
 
     See Also
@@ -1130,16 +1120,6 @@ def el(pressure, temperature, parcel_temperature_profile):
     Quantities even when given xarray DataArray profiles.
 
     """
-    # Default to surface parcel if no profile or starting pressure level is given
-    if parcel_temperature_profile is None:
-        pressure, temperature, dewpoint = _remove_nans(pressure, temperature, dewpoint)
-        new_profile = parcel_profile_with_lcl(pressure, temperature, dewpoint)
-        pressure, temperature, dewpoint, parcel_temperature_profile = new_profile
-        parcel_temperature_profile = parcel_temperature_profile.to(temperature.units)
-    else:
-        new_profile = _remove_nans(pressure, temperature, dewpoint, parcel_temperature_profile)
-        pressure, temperature, dewpoint, parcel_temperature_profile = new_profile
-
     el_p = units.Quantity(np.nan, pressure.units)
     el_t = units.Quantity(np.nan, temperature.units)
     # If the top of the sounding parcel is warmer than the environment, there is no EL
@@ -1551,9 +1531,12 @@ def saturation_vapor_pressure(temperature):
 
     """
     # Converted from original in terms of C to use kelvin.
-    return mpconsts.nounit.sat_pressure_0c * np.exp(
+    val =  mpconsts.nounit.sat_pressure_0c * np.exp(
         17.67 * (temperature - 273.15) / (temperature - 29.65)
     )
+    # Set any nans to 0
+    val = np.nan_to_num(val, nan = 0)
+    return val
 
 
 @exporter.export
@@ -2652,8 +2635,6 @@ def cape_cin(pressure, temperature, dewpoint, parcel_profile, which_lfc='bottom'
        Renamed ``dewpt`` parameter to ``dewpoint``
 
     """
-    pressure, temperature, dewpoint, parcel_profile = _remove_nans(pressure, temperature,
-                                                                   dewpoint, parcel_profile)
 
     pressure_lcl, _ = lcl(pressure[0], temperature[0], dewpoint[0])
     below_lcl = pressure > pressure_lcl
