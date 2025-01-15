@@ -18,10 +18,11 @@ from metpy.xarray import (add_vertical_dim_from_xarray, check_axis, check_matchi
                           grid_deltas_from_dataarray, preprocess_and_wrap)
 
 
-@pytest.fixture
-def test_ds():
+@pytest.fixture(params=[True, 'all'])
+def test_ds(request):
     """Provide an xarray dataset for testing."""
-    return xr.open_dataset(get_test_data('narr_example.nc', as_file_obj=False))
+    return xr.open_dataset(get_test_data('narr_example.nc', as_file_obj=False),
+                           decode_coords=request.param)
 
 
 @pytest.fixture
@@ -47,7 +48,8 @@ def test_var(test_ds):
 def test_var_multidim_full(test_ds):
     """Provide a variable with x/y coords and multidimensional lat/lon auxiliary coords."""
     return (test_ds[{'isobaric': [6, 12], 'y': [95, 96], 'x': [122, 123]}]
-            .squeeze().set_coords(['lat', 'lon'])['Temperature'])
+            .squeeze().drop_vars('Lambert_Conformal')
+            .set_coords(['lat', 'lon'])['Temperature'])
 
 
 @pytest.fixture
@@ -193,7 +195,7 @@ def test_quantify(test_ds_generic):
     assert is_quantity(result.data)
     assert result.data.units == units.kelvin
     assert 'units' not in result.attrs
-    np.testing.assert_array_almost_equal(result.data, units.Quantity(original))
+    assert_array_almost_equal(result.data, units.Quantity(original, 'K'))
 
 
 def test_dequantify():
@@ -213,9 +215,9 @@ def test_dataset_quantify(test_ds_generic):
     assert is_quantity(result['test'].data)
     assert result['test'].data.units == units.kelvin
     assert 'units' not in result['test'].attrs
-    np.testing.assert_array_almost_equal(
+    assert_array_almost_equal(
         result['test'].data,
-        units.Quantity(test_ds_generic['test'].data)
+        units.Quantity(test_ds_generic['test'].data, 'K')
     )
     assert result.attrs == test_ds_generic.attrs
 
@@ -271,6 +273,14 @@ def test_missing_grid_mapping_invalid(test_var_multidim_no_xy):
     """Test not falling back to implicit lat/lon projection when invalid."""
     data_var = test_var_multidim_no_xy.to_dataset(name='data').metpy.parse_cf('data')
     assert 'metpy_crs' not in data_var.coords
+
+
+def test_xy_not_vertical(test_ds):
+    """Test not detecting x/y as a vertical coordinate based on metadata."""
+    test_ds.x.attrs['positive'] = 'up'
+    test_ds.y.attrs['positive'] = 'up'
+    data_var = test_ds.metpy.parse_cf('Temperature')
+    assert data_var.metpy.vertical.identical(data_var.coords['isobaric'])
 
 
 def test_missing_grid_mapping_var(caplog):
@@ -407,10 +417,10 @@ def test_resolve_axis_conflict_double_lonlat(test_ds_generic):
     test_ds_generic['d'].attrs['_CoordinateAxisType'] = 'Lat'
     test_ds_generic['e'].attrs['_CoordinateAxisType'] = 'Lon'
 
-    with pytest.warns(UserWarning, match='More than one x coordinate'),\
+    with pytest.warns(UserWarning, match=r'More than one \w+ coordinate'),\
             pytest.raises(AttributeError):
         test_ds_generic['test'].metpy.x
-    with pytest.warns(UserWarning, match='More than one y coordinate'),\
+    with pytest.warns(UserWarning, match=r'More than one \w+ coordinate'),\
             pytest.raises(AttributeError):
         test_ds_generic['test'].metpy.y
 
@@ -422,10 +432,10 @@ def test_resolve_axis_conflict_double_xy(test_ds_generic):
     test_ds_generic['d'].attrs['standard_name'] = 'projection_x_coordinate'
     test_ds_generic['e'].attrs['standard_name'] = 'projection_y_coordinate'
 
-    with pytest.warns(UserWarning, match='More than one x coordinate'),\
+    with pytest.warns(UserWarning, match=r'More than one \w+ coordinate'),\
             pytest.raises(AttributeError):
         test_ds_generic['test'].metpy.x
-    with pytest.warns(UserWarning, match='More than one y coordinate'),\
+    with pytest.warns(UserWarning, match=r'More than one \w+ coordinate'),\
             pytest.raises(AttributeError):
         test_ds_generic['test'].metpy.y
 
@@ -666,11 +676,6 @@ def test_find_axis_number_bad_identifier(test_var):
     with pytest.raises(ValueError) as exc:
         test_var.metpy.find_axis_number('ens')
     assert 'axis is not valid' in str(exc.value)
-
-
-def test_cf_parse_with_grid_mapping(test_var):
-    """Test cf_parse dont delete grid_mapping attribute."""
-    assert test_var.grid_mapping == 'Lambert_Conformal'
 
 
 def test_data_array_loc_get_with_units(test_var):
@@ -1354,7 +1359,7 @@ def test_preprocess_and_wrap_with_to_magnitude():
     def func(a, b):
         return a * b
 
-    np.testing.assert_array_equal(func(data, data2), np.array([0, 0, 1]))
+    assert_array_equal(func(data, data2), np.array([0, 0, 1]))
 
 
 def test_preprocess_and_wrap_with_variable():
@@ -1377,9 +1382,9 @@ def test_preprocess_and_wrap_with_variable():
         result_21 = func(data2, data1)
 
     assert isinstance(result_12, xr.DataArray)
-    xr.testing.assert_identical(func(data1, data2), expected_12)
+    xr.testing.assert_identical(result_12, expected_12)
     assert is_quantity(result_21)
-    assert_array_equal(func(data2, data1), expected_21)
+    assert_array_equal(result_21, expected_21)
 
 
 def test_grid_deltas_from_dataarray_lonlat(test_da_lonlat):

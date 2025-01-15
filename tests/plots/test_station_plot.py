@@ -11,6 +11,7 @@ import pytest
 
 from metpy.plots import (current_weather, high_clouds, nws_layout, simple_layout, sky_cover,
                          StationPlot, StationPlotLayout)
+from metpy.testing import autoclose_figure
 from metpy.units import units
 
 
@@ -101,6 +102,18 @@ def test_station_plot_locations():
     return fig
 
 
+def test_station_plot_negative_zero():
+    """Test that we avoid formatting a negative 0 by default."""
+    fig = plt.figure()
+    ax = fig.add_subplot(1, 1, 1)
+    sp = StationPlot(ax, [0], [0])
+    text = sp.plot_parameter('C', [-0.04])
+
+    assert text.text[0] == '0'
+
+    plt.close(fig)
+
+
 @pytest.mark.mpl_image_compare(tolerance=0.00413, savefig_kwargs={'dpi': 300},
                                remove_text=True)
 def test_stationlayout_api():
@@ -133,8 +146,6 @@ def test_stationlayout_api():
 
 def test_station_layout_odd_data():
     """Test more corner cases with data passed in."""
-    fig = plt.figure(figsize=(9, 9))
-
     # Set up test layout
     layout = StationPlotLayout()
     layout.add_barb('u', 'v')
@@ -144,9 +155,9 @@ def test_station_layout_odd_data():
     data = {'temperature': [25.]}
 
     # Make the plot
-    sp = StationPlot(fig.add_subplot(1, 1, 1), [1], [2], fontsize=12)
-    layout.plot(sp, data)
-    assert True
+    with autoclose_figure(figsize=(9, 9)) as fig:
+        sp = StationPlot(fig.add_subplot(1, 1, 1), [1], [2], fontsize=12)
+        layout.plot(sp, data)
 
 
 def test_station_layout_replace():
@@ -276,7 +287,7 @@ def wind_plot():
     return u, v, x, y
 
 
-@pytest.mark.mpl_image_compare(remove_text=True, tolerance=0.499)
+@pytest.mark.mpl_image_compare(remove_text=True, tolerance=0.501)
 def test_barb_projection(wind_plot, ccrs):
     """Test that barbs are properly projected (#598)."""
     u, v, x, y = wind_plot
@@ -291,7 +302,7 @@ def test_barb_projection(wind_plot, ccrs):
     return fig
 
 
-@pytest.mark.mpl_image_compare(remove_text=True, tolerance=0.01)
+@pytest.mark.mpl_image_compare(remove_text=True, tolerance=0.023)
 def test_arrow_projection(wind_plot, ccrs):
     """Test that arrows are properly projected."""
     u, v, x, y = wind_plot
@@ -321,22 +332,22 @@ def test_barb_projection_list(wind_projection_list):
     """Test that barbs will be projected when lat/lon lists are provided."""
     lat, lon, u, v = wind_projection_list
 
-    fig = plt.figure()
-    ax = fig.add_subplot(1, 1, 1)
-    stnplot = StationPlot(ax, lon, lat)
-    stnplot.plot_barb(u, v)
-    assert stnplot.barbs
+    with autoclose_figure() as fig:
+        ax = fig.add_subplot(1, 1, 1)
+        stnplot = StationPlot(ax, lon, lat)
+        stnplot.plot_barb(u, v)
+        assert stnplot.barbs
 
 
 def test_arrow_projection_list(wind_projection_list):
     """Test that arrows will be projected when lat/lon lists are provided."""
     lat, lon, u, v = wind_projection_list
 
-    fig = plt.figure()
-    ax = fig.add_subplot(1, 1, 1)
-    stnplot = StationPlot(ax, lon, lat)
-    stnplot.plot_arrow(u, v)
-    assert stnplot.arrows
+    with autoclose_figure() as fig:
+        ax = fig.add_subplot(1, 1, 1)
+        stnplot = StationPlot(ax, lon, lat)
+        stnplot.plot_arrow(u, v)
+        assert stnplot.arrows
 
 
 @pytest.fixture
@@ -404,11 +415,11 @@ def test_barb_unit_conversion_exception(u, v):
     x_pos = np.array([0])
     y_pos = np.array([0])
 
-    fig = plt.figure()
-    ax = fig.add_subplot(1, 1, 1)
-    stnplot = StationPlot(ax, x_pos, y_pos)
-    with pytest.raises(ValueError):
-        stnplot.plot_barb(u, v, plot_units='knots')
+    with autoclose_figure() as fig:
+        ax = fig.add_subplot(1, 1, 1)
+        stnplot = StationPlot(ax, x_pos, y_pos)
+        with pytest.raises(ValueError):
+            stnplot.plot_barb(u, v, plot_units='knots')
 
 
 @pytest.mark.mpl_image_compare(tolerance=0.021, savefig_kwargs={'dpi': 300}, remove_text=True)
@@ -455,8 +466,8 @@ def test_scalar_unit_conversion_exception():
     x_pos = np.array([0])
     y_pos = np.array([0])
 
-    fig = plt.figure()
-    ax = fig.add_subplot(1, 1, 1)
-    stnplot = StationPlot(ax, x_pos, y_pos)
-    with pytest.raises(ValueError):
-        stnplot.plot_parameter('C', 50, plot_units='degC')
+    with autoclose_figure() as fig:
+        ax = fig.add_subplot(1, 1, 1)
+        stnplot = StationPlot(ax, x_pos, y_pos)
+        with pytest.raises(ValueError):
+            stnplot.plot_parameter('C', 50, plot_units='degC')

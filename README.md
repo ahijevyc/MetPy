@@ -2,7 +2,7 @@ MetPy
 =====
 
 [![MetPy Logo](https://github.com/Unidata/MetPy/raw/main/docs/_static/metpy_150x150.png)](https://unidata.github.io/MetPy/)
-[![Unidata Logo](https://github.com/Unidata/MetPy/raw/main/docs/_static/unidata_150x150.png)](https://www.unidata.ucar.edu)
+[![NSF Unidata Logo](https://github.com/Unidata/MetPy/raw/main/docs/_static/NSF-Unidata_lockup_horizontal_2024.png)](https://www.unidata.ucar.edu)
 
 [![License](https://img.shields.io/pypi/l/metpy.svg)](https://pypi.python.org/pypi/MetPy/)
 [![Gitter](https://badges.gitter.im/Unidata/MetPy.svg)](https://gitter.im/Unidata/MetPy?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
@@ -31,7 +31,7 @@ on a future ``1.x`` version.
 For additional MetPy examples not included in this repository, please see the [Unidata Python
 Gallery](https://unidata.github.io/python-gallery/).
 
-We support Python >= 3.8.
+We support Python >= 3.10.
 
 Need Help?
 ----------
@@ -107,7 +107,7 @@ take the average GEMPAK script for a weather map, you need to:
 
 One of the benefits hoped to achieve over GEMPAK is to make it easier to use these routines for
 any meteorological Python application; this means making it easy to pull out the LCL
-calculation and just use that, or re-use the Skew-T with your own data code. MetPy also prides
+calculation and just use that, or reuse the Skew-T with your own data code. MetPy also prides
 itself on being well-documented and well-tested, so that on-going maintenance is easily
 manageable.
 

@@ -25,6 +25,10 @@ import warnings
 import numpy as np
 import pint
 
+from .package_tools import Exporter
+
+exporter = Exporter(globals())
+
 log = logging.getLogger(__name__)
 
 UndefinedUnitError = pint.UndefinedUnitError
@@ -35,7 +39,9 @@ _base_unit_of_dimensionality = {
     '[temperature]': 'K',
     '[dimensionless]': '',
     '[length]': 'm',
-    '[speed]': 'm s**-1'
+    '[speed]': 'm s**-1',
+    '[specific_enthalpy]': 'm**2 s**-2',
+    '[specific_heat_capacity]': 'm**2 s**-2 K-1'
 }
 
 
@@ -55,6 +61,7 @@ _unit_preprocessors = [_fix_udunits_powers, lambda string: string.replace('%', '
                        _fix_udunits_div]
 
 
+@exporter.export
 def setup_registry(reg):
     """Set up a given registry with MetPy's default tweaks and settings."""
     reg.autoconvert_offset_to_baseunit = True
@@ -77,6 +84,9 @@ def setup_registry(reg):
                '= degreeN')
     reg.define('degrees_east = degree = degrees_E = degreesE = degree_east = degree_E '
                '= degreeE')
+    reg.define('dBz = 1e-18 m^3; logbase: 10; logfactor: 10 = dBZ')
+    reg.define('[specific_enthalpy] = [energy] / [mass]')
+    reg.define('[specific_heat_capacity] = [specific_enthalpy] / [temperature]')
 
     # Alias geopotential meters (gpm) to just meters
     reg.define('@alias meter = gpm')
@@ -95,6 +105,7 @@ units = setup_registry(pint.get_application_registry())
 warnings.simplefilter('ignore', category=pint.UnitStrippedWarning)
 
 
+@exporter.export
 def pandas_dataframe_to_unit_arrays(df, column_units=None):
     """Attach units to data in pandas dataframes and return quantities.
 
@@ -203,6 +214,7 @@ def masked_array(data, data_units=None, **kwargs):
     """
     if data_units is None:
         data_units = data.units
+        data = data.magnitude
     return units.Quantity(np.ma.masked_array(data, **kwargs), data_units)
 
 
@@ -249,10 +261,10 @@ def _check_argument_units(args, defaults, dimensionality):
                 yield arg, val, 'none', need
 
 
-def _get_changed_version(docstring):
+def _get_changed_versions(docstring):
     """Find the most recent version in which the docs say a function changed."""
     matches = re.findall(r'.. versionchanged:: ([\d.]+)', docstring)
-    return max(matches) if matches else None
+    return matches
 
 
 def _check_units_outer_helper(func, *args, **kwargs):
@@ -302,10 +314,10 @@ def _check_units_inner_helper(func, sig, defaults, dims, *args, **kwargs):
 
         # If function has changed, mention that fact
         if func.__doc__:
-            changed_version = _get_changed_version(func.__doc__)
-            if changed_version:
+            changed_versions = _get_changed_versions(func.__doc__)
+            if changed_versions:
                 msg = (
-                    f'This function changed in {changed_version}--double check '
+                    f'This function changed in version(s) {changed_versions}--double check '
                     'that the function is being called properly.\n'
                 ) + msg
         raise ValueError(msg)
@@ -383,7 +395,8 @@ def process_units(
             # Wrap output
             if multiple_output:
                 wrapped_result = []
-                for this_result, this_output_control in zip(result, output_control):
+                for this_result, this_output_control in zip(result, output_control,
+                                                            strict=False):
                     q = units.Quantity(this_result, this_output_control[0])
                     if this_output_control[1] is not None:
                         q = q.to(this_output_control[1])

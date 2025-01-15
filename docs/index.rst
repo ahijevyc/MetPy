@@ -14,99 +14,83 @@ MetPy
 =====
 
 MetPy is a collection of tools in Python for reading, visualizing, and performing calculations
-with weather data. MetPy supports Python >= 3.8 and is freely available under a permissive
+with weather data. MetPy supports Python >= 3.10 and is freely available under a permissive
 `open source license <https://github.com/Unidata/MetPy/blob/main/LICENSE>`_.
 
 If you're new to MetPy, check out our :doc:`Getting Started <userguide/startingguide>` guide.
 
-.. raw:: html
+.. grid:: 1 2 2 2
+    :gutter: 2
 
-    <div class="container">
-        <div class="row">
-            <div class="col-lg-6 col-md-6 col-sm-6 col-xs-12 d-flex">
-                <div class="card text-center intro-card shadow">
-                <span><i class="fas fa-book-open fa-10x"></i></span>
-                <div class="card-body d-flex flex-column">
-                    <h5 class="card-title">User Guide</h5>
-                    <p class="card-text">The user guide provides in-depth information on how
-                    to use MetPy, including how to get started. This is where to look for
-                    general conceptual descriptions on how to use parts of MetPy, like its
-                    support for XArray or units.</p>
+    .. grid-item-card:: :octicon:`book;10em`
+        :link: userguide/index
+        :link-type: doc
+        :text-align: center
 
-.. container:: card-button
+        **User Guide**
 
-    :doc:`To the user guide<userguide/index>`
+        The user guide provides in-depth information on how
+        to use MetPy, including how to get started. This is where to look for
+        general conceptual descriptions on how to use parts of MetPy, like its
+        support for XArray or units.
 
-.. raw:: html
+    .. grid-item-card:: :octicon:`list-unordered;10em`
+        :link: api/index
+        :link-type: doc
+        :text-align: center
 
-                </div>
-                </div>
-            </div>
-            <div class="col-lg-6 col-md-6 col-sm-6 col-xs-12 d-flex">
-                <div class="card text-center intro-card shadow">
-                <span><i class="fas fa-list-alt fa-10x"></i></span>
-                <div class="card-body d-flex flex-column">
-                    <h5 class="card-title">Reference Guide</h5>
-                    <p class="card-text">The reference guide contains detailed descriptions on
-                    every function and class within MetPy. This is where to turn to understand
-                    how to use a particular feature or where to search for a specific tool.</p>
+        **Reference Guide**
 
-.. container:: card-button
+        The reference guide contains detailed descriptions on
+        every function and class within MetPy. This is where to turn to understand
+        how to use a particular feature or where to search for a specific tool
 
-    :doc:`To the reference guide<api/index>`
+    .. grid-item-card:: :octicon:`terminal;10em`
+        :link: devel/index
+        :link-type: doc
+        :text-align: center
 
-.. raw:: html
+        **Developer Guide**
 
-                </div>
-                </div>
-            </div>
-            <div class="col-lg-6 col-md-6 col-sm-6 col-xs-12 d-flex">
-                <div class="card text-center intro-card shadow">
-                <span><i class="fas fa-laptop-code fa-10x"></i></span>
-                <div class="card-body d-flex flex-column">
-                    <h5 class="card-title">Developer Guide</h5>
-                    <p class="card-text">Want to help make MetPy better? Found something
-                    that's not working quite right? You can find instructions on how to
-                    contribute to MetPy here. You can also find detailed descriptions on
-                    tools useful for developing MetPy.</p>
+        Want to help make MetPy better? Found something
+        that's not working quite right? You can find instructions on how to
+        contribute to MetPy here. You can also find detailed descriptions on
+        tools useful for developing MetPy.
 
-.. container:: card-button
+    .. grid-item-card:: :octicon:`graph;10em`
+        :link: examples/index
+        :link-type: doc
+        :text-align: center
 
-    :doc:`To the development guide<devel/index>`
+        **Example Gallery**
 
-.. raw:: html
+        Check out MetPy's gallery of examples which contains
+        sample code demonstrating various parts of MetPy's functionality.
 
-                </div>
-                </div>
-            </div>
-            <div class="col-lg-6 col-md-6 col-sm-6 col-xs-12 d-flex">
-                <div class="card text-center intro-card shadow">
-                <span><i class="fas fa-chart-area fa-10x"></i></span>
-                <div class="card-body d-flex flex-column">
-                    <h5 class="card-title">Examples</h5>
-                    <p class="card-text">Check out MetPy's gallery of examples which contains
-                    sample code demonstrating various parts of MetPy's functionality.</p>
-
-.. container:: card-button
-
-    :doc:`To the example gallery<examples/index>`
+Calendar
+--------
+Check out the MetPy Community Calendar below. The bi-weekly MetPy Community Dev Call
+is an open discussion for community input, developer highlights and updates, and
+community code showcase opportunities. Stop by!
+Find more information in the pinned thread in the
+`Announcements section <https://github.com/Unidata/MetPy/discussions/categories/announcements>`
+of MetPy GitHub Discussions.
 
 .. raw:: html
 
-                </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    <iframe src="https://calendar.google.com/calendar/embed?height=600&wkst=1&bgcolor=%23ffffff&ctz=America%2FDenver&title=MetPy%20Community%20Calendar&showPrint=0&showTabs=0&showCalendars=0&showTz=1&src=Y181OTZjYzM0Y2Q3MTk2Y2FlYzIyMzc4Njc5NWM4NzMwNzg2YWVhZDZlMmRiZmZlMDM0MDMxODZmMjAzMDc1OTczQGdyb3VwLmNhbGVuZGFyLmdvb2dsZS5jb20&color=%23D50000" style="border-width:0" width="800" height="600" frameborder="0" scrolling="no"></iframe>
 
-Our up-to-date references for grants and funding can be found `here <https://github.com/Unidata/MetPy/blob/main/CITATION.cff>`_.
+Our up-to-date references for grants and funding can be found
+`here <https://github.com/Unidata/MetPy/blob/main/CITATION.cff>`_.
 
-.. image:: _static/NSF.jpg
-   :width: 100 px
-   :align: left
-   :alt: National Science Foundation logo
-
-.. image:: _static/unidata_150x150.png
-   :width: 100 px
+.. image:: _static/NSF-Unidata_lockup_horizontal_2024.png
+   :class: no-scaled-link only-light
    :align: center
-   :alt: Unidata logo
+   :height: 100px
+   :alt: NSF Unidata logo
+
+.. image:: _static/NSF-Unidata_lockup_horizontal_2024_darkmode_v3.png
+   :class: no-scaled-link only-dark
+   :align: center
+   :height: 100px
+   :alt: NSF Unidata logo

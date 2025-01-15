@@ -348,7 +348,8 @@ def parse_metar_file(filename, *, year=None, month=None):
     ----------
     filename : str or file-like object
         If str, the name of the file to be opened. If `filename` is a file-like object,
-        this will be read from directly.
+        this will be read from directly and needs to be opened in text mode (i.e. ``read()``
+        needs to return a string, not bytes).
     year : int, optional
         Year in which observation was taken, defaults to current year. Keyword-only argument.
     month : int, optional
@@ -477,7 +478,7 @@ def _metars_to_dataframe(metar_iter, *, year=None, month=None):
     # Set the units for the dataframe--filter out warning from Pandas
     with warnings.catch_warnings():
         warnings.simplefilter('ignore', UserWarning)
-        df.units = col_units
+        df.units = col_units.copy()
 
     return df
 

@@ -5,6 +5,8 @@
 
 import pytest
 
+from metpy.testing import version_check
+
 ccrs = pytest.importorskip('cartopy.crs')
 
 from metpy.plots.mapping import CFProjection  # noqa: E402
@@ -50,6 +52,30 @@ def test_bad_projection_raises():
     attrs = {'grid_mapping_name': 'unknown'}
     with pytest.raises(ValueError) as exc:
         CFProjection(attrs).to_cartopy()
+
+    assert 'Unhandled projection' in str(exc.value)
+
+
+def test_unhandled_projection():
+    """Test behavior when given a projection with no CF equivalent from PROJ."""
+    attrs = {
+        'crs_wkt': 'PROJCRS["unknown",BASEGEOGCRS["unknown",DATUM["unknown",ELLIPSOID['
+                   '"unknown",6371200,0,LENGTHUNIT["metre",1,ID["EPSG",9001]]]],'
+                   'PRIMEM["Greenwich",0,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",'
+                   '8901]]],CONVERSION["unknown",METHOD["Equidistant Cylindrical ('
+                   'Spherical)",ID["EPSG",1029]],PARAMETER["Latitude of 1st standard '
+                   'parallel",0,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8823]],'
+                   'PARAMETER["Longitude of natural origin",0,ANGLEUNIT["degree",'
+                   '0.0174532925199433],ID["EPSG",8802]],PARAMETER["False easting",0,'
+                   'LENGTHUNIT["metre",1],ID["EPSG",8806]],PARAMETER["False northing",0,'
+                   'LENGTHUNIT["metre",1],ID["EPSG",8807]]],CS[Cartesian,2],AXIS["(E)",east,'
+                   'ORDER[1],LENGTHUNIT["metre",1,ID["EPSG",9001]]],AXIS["(N)",north,'
+                   'ORDER[2],LENGTHUNIT["metre",1,ID["EPSG",9001]]]]'}
+    cfproj = CFProjection(attrs)
+
+    assert str(cfproj) == 'Projection: unknown'
+    with pytest.raises(ValueError) as exc:
+        cfproj.to_cartopy()
 
     assert 'Unhandled projection' in str(exc.value)
 
@@ -123,6 +149,7 @@ def test_lcc():
     assert crs.globe.to_proj4_params()['ellps'] == 'sphere'
 
 
+@pytest.mark.xfail(version_check('cartopy==0.23.0'), reason='SciTools/cartopy#2377')
 def test_lcc_minimal():
     """Test handling lambert conformal conic projection with minimal attributes."""
     attrs = {'grid_mapping_name': 'lambert_conformal_conic'}
@@ -130,6 +157,7 @@ def test_lcc_minimal():
     assert isinstance(crs, ccrs.LambertConformal)
 
 
+@pytest.mark.xfail(version_check('cartopy==0.23.0'), reason='SciTools/cartopy#2377')
 def test_lcc_single_std_parallel():
     """Test lambert conformal projection with one standard parallel."""
     attrs = {'grid_mapping_name': 'lambert_conformal_conic', 'standard_parallel': 25}
@@ -215,6 +243,22 @@ def test_polar_stereographic_std_parallel():
     assert isinstance(crs, ccrs.Stereographic)
     assert crs.proj4_params['lat_0'] == -90
     assert crs.proj4_params['lat_ts'] == 60
+
+
+def test_rotated_latitude_longitude():
+    """Test handling a rotated latitude longitude projection."""
+    attrs = {
+        'grid_mapping_name': 'rotated_latitude_longitude',
+        'grid_north_pole_latitude': 36,
+        'grid_north_pole_longitude': 65,
+        'north_pole_grid_longitude': 0.0,
+    }
+    crs = CFProjection(attrs).to_cartopy()
+
+    assert isinstance(crs, ccrs.RotatedPole)
+    assert crs.proj4_params['o_lon_p'] == 0
+    assert crs.proj4_params['o_lat_p'] == 36
+    assert crs.proj4_params['lon_0'] == 180 + 65
 
 
 def test_lat_lon():

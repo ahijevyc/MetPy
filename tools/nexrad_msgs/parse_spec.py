@@ -63,7 +63,8 @@ def process_msg18(fname):
                 if len(parts) == 8:
                     parts = parts[:6] + [parts[6] + parts[7]]
 
-                var_name, desc, typ, units, rng, prec, byte_range = parts
+                # var_name, desc, typ, units, rng, prec, byte_range
+                var_name, desc, typ, units, _, _, byte_range = parts
                 start, end = map(int, byte_range.split('-'))
                 size = end - start + 1
                 assert size >= 4
@@ -103,8 +104,7 @@ def fix_type(typ, size, additional=None):
         matches = t(typ) if callable(t) else t == typ
         if matches:
             fmt_str, true_size = info(size) if callable(info) else info
-            assert size == true_size, ('{}: Got size {} instead of {}'.format(typ, size,
-                                                                              true_size))
+            assert size == true_size, (f'{typ}: Got size {size} instead of {true_size}')
             return fmt_str.format(size=size)
 
     raise ValueError(f'No type match! ({typ})')

@@ -7,6 +7,7 @@ from enum import Enum
 
 import numpy as np
 
+from .text import scattertext
 from .wx_symbols import (current_weather, high_clouds, low_clouds, mid_clouds,
                          pressure_tendency, sky_cover, wx_symbol_font)
 from ..package_tools import Exporter
@@ -163,7 +164,7 @@ class StationPlot:
         kwargs['fontproperties'] = wx_symbol_font.copy()
         return self.plot_parameter(location, codes, symbol_mapper, **kwargs)
 
-    def plot_parameter(self, location, parameter, formatter='.0f', **kwargs):
+    def plot_parameter(self, location, parameter, formatter=None, **kwargs):
         """At the specified location in the station model plot a set of values.
 
         This specifies that at the offset `location`, the data in `parameter` should be
@@ -186,7 +187,7 @@ class StationPlot:
         formatter : str or Callable, optional
             How to format the data as a string for plotting. If a string, it should be
             compatible with the :func:`format` builtin. If a callable, this should take a
-            value and return a string. Defaults to '0.f'.
+            value and return a string. Defaults to 'z0.f'.
         plot_units: `pint.unit`
             Units to plot in (performing conversion if necessary). Defaults to given units.
         kwargs
@@ -209,7 +210,7 @@ class StationPlot:
     def plot_text(self, location, text, **kwargs):
         """At the specified location in the station model plot a collection of text.
 
-        This specifies that at the offset `location`, the strings in `text` should be
+        This specifies that at the offset ``location``, the strings in ``text`` should be
         plotted.
 
         Additional keyword arguments given will be passed onto the actual plotting
@@ -220,7 +221,7 @@ class StationPlot:
         Parameters
         ----------
         location : str or tuple[float, float]
-            The offset (relative to center) to plot this parameter. If str, should be one of
+            The offset (relative to center) to plot this parameter. If `str`, should be one of
             'C', 'N', 'NE', 'E', 'SE', 'S', 'SW', 'W', or 'NW'. Otherwise, should be a tuple
             specifying the number of increments in the x and y directions; increments
             are multiplied by `spacing` to give offsets in x and y relative to the center.
@@ -237,9 +238,8 @@ class StationPlot:
         location = self._handle_location(location)
 
         kwargs = self._make_kwargs(kwargs)
-        text_collection = self.ax.scattertext(self.x, self.y, text, loc=location,
-                                              size=kwargs.pop('fontsize', self.fontsize),
-                                              **kwargs)
+        text_collection = scattertext(self.ax, self.x, self.y, text, loc=location,
+                                      size=kwargs.pop('fontsize', self.fontsize), **kwargs)
         if location in self.items:
             self.items[location].remove()
         self.items[location] = text_collection
@@ -339,9 +339,7 @@ class StationPlot:
                                  'u and v wind components.')
 
         # Strip units, CartoPy transform doesn't like
-        u = np.array(u)
-        v = np.array(v)
-        return u, v
+        return np.array(getattr(u, 'magnitude', u)), np.array(getattr(v, 'magnitude', v))
 
     @staticmethod
     def _scalar_plotting_units(scalar_value, plotting_units):
@@ -372,6 +370,14 @@ class StationPlot:
     @staticmethod
     def _to_string_list(vals, fmt):
         """Convert a sequence of values to a list of strings."""
+        if fmt is None:
+            import sys
+            if sys.version_info >= (3, 11):
+                fmt = 'z.0f'
+            else:
+                def fmt(s):
+                    """Perform default formatting with no decimal places and no negative 0."""
+                    return format(round(s, 0) + 0., '.0f')
         if not callable(fmt):
             def formatter(s):
                 """Turn a format string into a callable."""
@@ -620,7 +626,7 @@ class StationPlotLayout(dict):
     def __repr__(self):
         """Return string representation of layout."""
         return ('{'
-                + ', '.join('{0}: ({1[0].name}, {1[1]}, ...)'.format(loc, info)
+                + ', '.join(f'{loc}: ({info[0].name}, {info[1]}, ...)'
                             for loc, info in sorted(self.items()))
                 + '}')
 

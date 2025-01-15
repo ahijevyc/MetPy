@@ -9,10 +9,11 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from metpy.calc import (bulk_shear, bunkers_storm_motion, critical_angle,
+from metpy.calc import (bulk_shear, bunkers_storm_motion, corfidi_storm_motion, critical_angle,
                         mean_pressure_weighted, precipitable_water, significant_tornado,
                         supercell_composite, weighted_continuous_average)
-from metpy.testing import assert_almost_equal, assert_array_almost_equal, get_upper_air_data
+from metpy.testing import (assert_almost_equal, assert_array_almost_equal, get_upper_air_data,
+                           version_check)
 from metpy.units import concatenate, units
 
 
@@ -130,7 +131,7 @@ def test_weighted_continuous_average():
     assert_almost_equal(v, 6.900543760612305 * units('m/s'), 7)
 
 
-@pytest.mark.xfail(reason='hgrecco/pint#1593')
+@pytest.mark.xfail(condition=version_check('pint<0.21'), reason='hgrecco/pint#1593')
 def test_weighted_continuous_average_temperature():
     """Test pressure-weighted mean temperature function with vertical interpolation."""
     data = get_upper_air_data(datetime(2016, 5, 22, 0), 'DDC')
@@ -138,8 +139,7 @@ def test_weighted_continuous_average_temperature():
                                      data['temperature'],
                                      height=data['height'],
                                      depth=6000 * units('meter'))
-    # Commenting out since it won't run until the above can run without error
-    # assert_almost_equal(t, 279.3275828240889 * units('kelvin'), 7)
+    assert_almost_equal(t, 279.07450928270185 * units('kelvin'), 7)
 
 
 def test_weighted_continuous_average_elevated():
@@ -158,7 +158,7 @@ def test_weighted_continuous_average_elevated():
 def test_precipitable_water_xarray():
     """Test precipitable water with xarray input."""
     data = get_upper_air_data(datetime(2016, 5, 22, 0), 'DDC')
-    press = xr.DataArray(data['pressure'], attrs={'units': str(data['pressure'].units)})
+    press = xr.DataArray(data['pressure'].m, attrs={'units': str(data['pressure'].units)})
     dewp = xr.DataArray(data['dewpoint'], dims=('press',), coords=(press,))
     pw = precipitable_water(press, dewp, top=400 * units.hPa)
     truth = 22.60430651 * units.millimeters
@@ -171,8 +171,84 @@ def test_bunkers_motion():
     motion = concatenate(bunkers_storm_motion(data['pressure'],
                          data['u_wind'], data['v_wind'],
                          data['height']))
-    truth = [2.18346161, 0.86094706, 11.6006767, 12.53639395, 6.89206916,
-             6.69867051] * units('m/s')
+    truth = [2.062733, 0.96246913, 11.22554254, 12.83861839, 6.64413777,
+             6.90054376] * units('m/s')
+    assert_almost_equal(motion.flatten(), truth, 8)
+
+
+def test_corfidi_motion():
+    """Test corfidi MCS motion with observed sounding."""
+    data = get_upper_air_data(datetime(2016, 5, 22, 0), 'DDC')
+    motion_full = concatenate(corfidi_storm_motion(data['pressure'],
+                                                   data['u_wind'], data['v_wind']))
+    truth_full = [20.60174457, -22.38741441,
+                  38.32734963, -11.90040377] * units('kt')
+    assert_almost_equal(motion_full.flatten(), truth_full, 8)
+
+
+def test_corfidi_motion_override_llj():
+    """Test corfidi MCS motion with overridden LLJ."""
+    data = get_upper_air_data(datetime(2016, 5, 22, 0), 'DDC')
+    motion_override = concatenate(corfidi_storm_motion(data['pressure'],
+                                                       data['u_wind'], data['v_wind'],
+                                                       u_llj=0 * units('kt'),
+                                                       v_llj=0 * units('kt')))
+    truth_override = [17.72560506, 10.48701063,
+                      35.45121012, 20.97402126] * units('kt')
+    assert_almost_equal(motion_override.flatten(), truth_override, 8)
+
+    with pytest.raises(ValueError):
+        corfidi_storm_motion(data['pressure'], data['u_wind'],
+                             data['v_wind'], u_llj=10 * units('kt'))
+
+    with pytest.raises(ValueError):
+        corfidi_storm_motion(data['pressure'], data['u_wind'],
+                             data['v_wind'], v_llj=10 * units('kt'))
+
+
+def test_corfidi_corfidi_llj_unaivalable():
+    """Test corfidi MCS motion where the LLJ is unailable."""
+    data = get_upper_air_data(datetime(2016, 5, 22, 0), 'DDC')
+    with pytest.raises(ValueError):
+        corfidi_storm_motion(data['pressure'][6:], data['u_wind'][6:], data['v_wind'][6:])
+
+
+def test_corfidi_corfidi_cloudlayer_trimmed():
+    """Test corfidi MCS motion where sounding does not include the entire cloud layer."""
+    data = get_upper_air_data(datetime(2016, 5, 22, 0), 'DDC')
+    motion_no_top = concatenate(corfidi_storm_motion(data['pressure'][:37],
+                                                     data['u_wind'][:37], data['v_wind'][:37]))
+    truth_no_top = [20.40419260, -21.43467629,
+                    37.93224569, -9.99492754] * units('kt')
+    assert_almost_equal(motion_no_top.flatten(), truth_no_top, 8)
+
+
+def test_corfidi_motion_with_nans():
+    """Test corfidi MCS motion with observed sounding with nans."""
+    data = get_upper_air_data(datetime(2016, 5, 22, 0), 'DDC')
+    u_with_nans = data['u_wind']
+    u_with_nans[6:10] = np.nan
+    v_with_nans = data['v_wind']
+    v_with_nans[6:10] = np.nan
+    motion_with_nans = concatenate(corfidi_storm_motion(data['pressure'],
+                                                        u_with_nans, v_with_nans))
+    truth_with_nans = [20.01078763, -22.65208606,
+                       37.14543575, -12.42974709] * units('kt')
+    assert_almost_equal(motion_with_nans.flatten(), truth_with_nans, 8)
+
+
+def test_bunkers_motion_with_nans():
+    """Test Bunkers storm motion with observed sounding."""
+    data = get_upper_air_data(datetime(2016, 5, 22, 0), 'DDC')
+    u_with_nan = data['u_wind']
+    u_with_nan[24:26] = np.nan
+    v_with_nan = data['v_wind']
+    v_with_nan[24:26] = np.nan
+    motion = concatenate(bunkers_storm_motion(data['pressure'],
+                         u_with_nan, v_with_nan,
+                         data['height']))
+    truth = [2.09232447, 0.97612357, 11.25513401, 12.85227283, 6.67372924,
+             6.9141982] * units('m/s')
     assert_almost_equal(motion.flatten(), truth, 8)
 
 

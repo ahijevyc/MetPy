@@ -9,7 +9,9 @@
 # All configuration values have a default; values that are commented out
 # serve to show the default.
 
-from datetime import datetime
+from datetime import datetime, timezone
+import inspect
+import os
 from pathlib import Path
 import re
 import sys
@@ -36,12 +38,14 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.coverage',
     'sphinx.ext.intersphinx',
+    'sphinx.ext.linkcode',
     'sphinx.ext.mathjax',
     'sphinx.ext.napoleon',
-    'sphinx.ext.viewcode',
+    'sphinx_design',
     'sphinx_gallery.gen_gallery',
     'matplotlib.sphinxext.plot_directive',
-    'myst_parser'
+    'myst_parser',
+    'make_areas'
 ]
 
 sphinx_gallery_conf = {
@@ -57,6 +61,10 @@ sphinx_gallery_conf = {
     'abort_on_example_error': True,
     'reset_modules': [lambda conf, fname: sys.modules.pop('pint', None)]
 }
+
+# By default, only generate all the areas when running on a release CI job
+metpy_generate_all_areas = (not os.environ.get('GITHUB_REF', '').startswith('refs/pull')
+                            and sys.version_info < (3, 12))
 
 # Turn off code and image links for embedded mpl plots
 plot_html_show_source_link = False
@@ -85,7 +93,7 @@ nitpick_ignore = [
     ('py:class', 'M'), ('py:class', 'N'), ('py:class', 'P'), ('py:class', '2'),
     ('py:class', 'optional'), ('py:class', 'array-like'), ('py:class', 'file-like object'),
     # For traitlets docstrings
-    ('py:class', 'All'), ('py:class', 'callable'),
+    ('py:class', 'All'), ('py:class', 't.Any'), ('py:class', 't.Iterable'),
     # Next two are from Python dict docstring that we inherit
     ('py:class', 'a shallow copy of D'),
     ('py:class', 'v, remove specified key and return the corresponding value.')
@@ -93,10 +101,20 @@ nitpick_ignore = [
 
 nitpick_ignore_regex = [
     ('py:class', r'default:.*'),  # For some traitlets docstrings
+    ('py:class', r'.*Sentinel'),
+    ('py:class', r'.*Bunch'),
+    ('py:class', r'.*[cC]allable'),
+    ('py:class', r'.*EventHandler'),
+    ('py:class', r'.*TraitType'),
     ('py:class', r'.*object providing a view on.*'),  # Python dict docstring
     ('py:class', r'None.  .*'),  # Python dict docstring
     ('py:class', r'.*D\[k\].*'),  # Python dict docstring
 ]
+
+show_warning_types = True
+
+# Eliminates unnecessary warning about sphinx-gallery rebuild
+suppress_warnings = ['config.cache']
 
 # Tweak how docs are formatted
 napoleon_use_rtype = False
@@ -116,7 +134,7 @@ autosummary_ignore_module_all = False
 
 # The encoding of source files.
 # source_encoding = 'utf-8-sig'
-cur_date = datetime.utcnow()
+cur_date = datetime.now(timezone.utc)
 
 # The main toctree document.
 master_doc = 'index'
@@ -126,8 +144,8 @@ project = 'MetPy'
 
 # noinspection PyShadowingBuiltins
 copyright = (
-    f'2008\u2013{cur_date:%Y}, MetPy Developers.'
-    'Development is supported by Unidata and the National Science Foundation.'
+    f'2008\u2013{cur_date:%Y}, MetPy Developers. '
+    'Development is supported by Unidata and the National Science Foundation'
 )
 
 # The version info for the project you're documenting, acts as replacement for
@@ -193,6 +211,10 @@ pygments_style = 'sphinx'
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 html_theme = 'pydata_sphinx_theme'
+
+# Use the version set in CI as necessary, which allows building "release" docs on a
+# maintenance branch--strip leading 'v' since our json file doesn't have the v on the 'version'
+doc_version = os.environ.get('DOC_VERSION', 'dev' if 'dev' in version else version).lstrip('v')
 html_theme_options = {
     'external_links': [
         {'name': 'Release Notes', 'url': 'https://github.com/Unidata/MetPy/releases'},
@@ -201,20 +223,41 @@ html_theme_options = {
         {
             'name': 'GitHub',
             'url': 'https://github.com/Unidata/MetPy',
-            'icon': 'fab fa-github-square',
+            'icon': 'fa-brands fa-github',
+            'type': 'fontawesome',
+        },
+        {
+            'name': 'Bluesky',
+            'url': 'https://bsky.app/profile/metpy.bsky.social',
+            'icon': 'fa-brands fa-bluesky',
+            'type': 'fontawesome',
         },
         {
             'name': 'Twitter',
             'url': 'https://twitter.com/MetPy',
-            'icon': 'fab fa-twitter-square',
+            'icon': 'fa-brands fa-twitter',
+            'type': 'fontawesome',
+        },
+        {
+            'name': 'Calendar',
+            'url': 'https://calendar.google.com/calendar/embed?src=c_596cc34cd7196caec223786795c8730786aead6e2dbffe03403186f203075973%40group.calendar.google.com&ctz=America%2FDenver',
+            'icon': 'fa-solid fa-calendar',
+            'type': 'fontawesome',
         }
     ],
     'use_edit_page_button': False,
-    'google_analytics_id': 'UA-92978945-1',
+    'analytics': {'google_analytics_id': 'G-J48T2BG3J7'},
     'navbar_align': 'left',
-    'navbar_start': ['navbar-logo'],
+    'navbar_start': ['navbar-logo', 'version-switcher'],
     'navbar_center': ['navbar-nav'],
-    'navbar_end': ['search-field', 'navbar-icon-links'],
+    'header_links_before_dropdown': 6,
+    'navbar_persistent': ['search-button'],
+    'navbar_end': ['navbar-icon-links', 'theme-switcher'],
+    'switcher': {
+        'json_url': 'https://unidata.github.io/MetPy/pst-versions.json',
+        'version_match': doc_version
+    },
+    'navigation_with_keys': False
 }
 
 # Theme options are theme-specific and customize the look and feel of a theme
@@ -233,6 +276,7 @@ html_context = {
     'github_user': 'Unidata',
     'github_repo': 'MetPy',
     'github_version': 'main',  # Make changes to the main branch
+    'default_mode': 'auto',
 }
 
 # Add any paths that contain custom themes here, relative to this directory.
@@ -277,7 +321,7 @@ html_last_updated_fmt = '%b %d, %Y at %H:%M:%S'
 
 # Custom sidebar templates, maps document names to template names.
 html_sidebars = {
-    '**': ['versions', 'sidebar-nav-bs']
+    '**': ['sidebar-nav-bs']
 }
 
 # Additional templates that should be rendered to pages, maps page names to
@@ -294,7 +338,7 @@ html_sidebars = {
 # html_split_index = False
 
 # If true, links to the reST sources are added to the pages.
-# html_show_sourcelink = True
+html_show_sourcelink = False
 
 # If true, "Created using Sphinx" is shown in the HTML footer. Default is True.
 # html_show_sphinx = True
@@ -410,16 +454,22 @@ linkcheck_ignore = [
     r'https://doi\.org/10\.1289/ehp\.1206273',
     # Couldn't fix these 403's with user agents
     r'https://doi\.org/10\.1029/2010GL045777',
-    r'https://doi\.org/10\.1098/rspa\.2004\.1430'
+    r'https://doi\.org/10\.1098/rspa\.2004\.1430',
+    r'https://doi\.org/10\.1002/qj\.3899',
+    # Currently giving certificate errors on GitHub
+    r'https://library.wmo.int/.*',
+    # For some reason GHA gets a 403 from Stack Overflow
+    r'https://stackoverflow.com/questions/tagged/metpy'
     ]
 
 # Dictionary of URL redirects allowed
 linkcheck_allowed_redirects = {
     r'https://pint\.readthedocs\.io': r'https://pint\.readthedocs\.io/en/stable/',
-    r'https://conda.io/docs/': r'https://conda.io/en/latest/',
+    r'https://conda.io/docs/': r'https://docs.conda.io/projects/conda/en/latest/',
     r'https://github.com/Unidata/MetPy/issues/new/choose': r'https://github.com/login.*choose',
     r'https://doi.org/.*': r'https://.*',
-    r'https://gitter.im/Unidata/MetPy': r'https://app.gitter.im/.*MetPy.*'
+    r'https://gitter.im/Unidata/MetPy': r'https://app.gitter.im/.*MetPy.*',
+    r'https://library.wmo.int/idurl/.*': r'https://library.wmo.int/.*'
 }
 
 # Domain-specific HTTP headers for requests
@@ -427,3 +477,64 @@ linkcheck_request_headers = {
     r'https://docs.github.com/': {'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux i686; '
                                                 'rv:24.0) Gecko/20100101 Firefox/24.0'}
 }
+
+# Function to resolve source code links for `linkcode`
+# adapted from NumPy, Pandas implementations
+def linkcode_resolve(domain, info):
+    """
+    Determine the URL corresponding to Python object
+    """
+    if domain != "py":
+        return None
+
+    modname = info["module"]
+    fullname = info["fullname"]
+
+    submod = sys.modules.get(modname)
+    if submod is None:
+        return None
+
+    obj = submod
+    for part in fullname.split("."):
+        try:
+            obj = getattr(obj, part)
+        except AttributeError:
+            return None
+
+    try:
+        fn = inspect.getsourcefile(inspect.unwrap(obj))
+    except TypeError:
+        try:  # property
+            fn = inspect.getsourcefile(inspect.unwrap(obj.fget))
+        except (AttributeError, TypeError):
+            fn = None
+    if not fn:
+        return None
+
+    try:
+        source, lineno = inspect.getsourcelines(obj)
+    except TypeError:
+        try:  # property
+            source, lineno = inspect.getsourcelines(obj.fget)
+        except (AttributeError, TypeError):
+            lineno = None
+    except OSError:
+        lineno = None
+
+    if lineno:
+        linespec = f"#L{lineno}-L{lineno + len(source) - 1}"
+    else:
+        linespec = ""
+
+    if 'metpy' in fn:
+        fn = os.path.relpath(fn, start=os.path.dirname(metpy.__file__))
+
+        if "+" in metpy.__version__:
+            return f"https://github.com/Unidata/MetPy/blob/main/src/metpy/{fn}{linespec}"
+        else:
+            return (
+                f"https://github.com/Unidata/MetPy/blob/"
+                f"v{metpy.__version__}/src/metpy/{fn}{linespec}"
+            )
+    else:
+        return None

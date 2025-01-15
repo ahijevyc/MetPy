@@ -5,16 +5,13 @@
 
 from datetime import datetime
 
-import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 import xarray as xr
 
 from metpy.plots import add_metpy_logo, add_timestamp, add_unidata_logo, convert_gempak_color
-from metpy.testing import get_test_data
-
-MPL_VERSION = matplotlib.__version__[:3]
+from metpy.testing import autoclose_figure, get_test_data, version_check
 
 
 @pytest.mark.mpl_image_compare(tolerance=2.638, remove_text=True)
@@ -55,12 +52,12 @@ def test_add_timestamp_high_contrast():
 
 def test_add_timestamp_xarray():
     """Test that add_timestamp can work with xarray datetime accessor."""
-    fig = plt.figure()
-    ax = fig.add_subplot(1, 1, 1)
-    ds = xr.open_dataset(get_test_data('AK-REGIONAL_8km_3.9_20160408_1445.gini'),
-                         engine='gini')
-    txt = add_timestamp(ax, ds.time.dt, pretext='')
-    assert txt.get_text() == '2016-04-08T14:45:20Z'
+    with autoclose_figure() as fig:
+        ax = fig.add_subplot(1, 1, 1)
+        ds = xr.open_dataset(get_test_data('AK-REGIONAL_8km_3.9_20160408_1445.gini'),
+                             engine='gini')
+        txt = add_timestamp(ax, ds.time.dt, pretext='')
+        assert txt.get_text() == '2016-04-08T14:45:20Z'
 
 
 @pytest.mark.mpl_image_compare(tolerance=0.004, remove_text=True)
@@ -89,13 +86,13 @@ def test_add_unidata_logo():
 
 def test_add_logo_invalid_size():
     """Test adding a logo to a figure with an invalid size specification."""
-    fig = plt.figure(figsize=(9, 9))
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError), autoclose_figure(figsize=(9, 9)) as fig:
         add_metpy_logo(fig, size='jumbo')
 
 
-@pytest.mark.mpl_image_compare(tolerance={'3.3': 1.072}.get(MPL_VERSION, 0),
-                               remove_text=True)
+@pytest.mark.mpl_image_compare(
+    tolerance=1.072 if version_check('matplotlib<3.5') else 0,
+    remove_text=True)
 def test_gempak_color_image_compare():
     """Test creating a plot with all the GEMPAK colors."""
     c = range(32)
@@ -114,8 +111,9 @@ def test_gempak_color_image_compare():
     return fig
 
 
-@pytest.mark.mpl_image_compare(tolerance={'3.3': 1.215}.get(MPL_VERSION, 0),
-                               remove_text=True)
+@pytest.mark.mpl_image_compare(
+    tolerance=1.215 if version_check('matplotlib<3.5') else 0,
+    remove_text=True)
 def test_gempak_color_xw_image_compare():
     """Test creating a plot with all the GEMPAK colors using xw style."""
     c = range(32)

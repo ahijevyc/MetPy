@@ -39,6 +39,9 @@ Moist Thermodynamics
       mixing_ratio
       mixing_ratio_from_relative_humidity
       mixing_ratio_from_specific_humidity
+      moist_air_gas_constant
+      moist_air_poisson_exponent
+      moist_air_specific_heat_pressure
       moist_lapse
       moist_static_energy
       precipitable_water
@@ -59,7 +62,12 @@ Moist Thermodynamics
       vertical_velocity_pressure
       virtual_potential_temperature
       virtual_temperature
+      virtual_temperature_from_dewpoint
+      water_latent_heat_melting
+      water_latent_heat_sublimation
+      water_latent_heat_vaporization
       wet_bulb_temperature
+      wet_bulb_potential_temperature
 
 
 Soundings
@@ -70,11 +78,14 @@ Soundings
 
       bulk_shear
       bunkers_storm_motion
+      corfidi_storm_motion
       cape_cin
       ccl
       critical_angle
       cross_totals
+      downdraft_cape
       el
+      galvez_davison_index
       k_index
       lcl
       lfc
@@ -204,6 +215,7 @@ Other
       azimuth_range_to_lat_lon
       find_bounding_indices
       find_intersections
+      find_peaks
       get_layer
       get_layer_heights
       get_perturbation
@@ -211,5 +223,6 @@ Other
       isentropic_interpolation_as_dataset
       nearest_intersection_idx
       parse_angle
+      peak_persistence
       reduce_point_density
       resample_nn_1d

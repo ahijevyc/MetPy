@@ -4,7 +4,7 @@
 """Support reading information from various text file formats."""
 
 import contextlib
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 import string
 
@@ -12,6 +12,9 @@ import numpy as np
 import pandas as pd
 
 from ._tools import open_as_needed
+from ..package_tools import Exporter
+
+exporter = Exporter(globals())
 
 
 def _decode_coords(coordinates):
@@ -39,15 +42,22 @@ def _decode_coords(coordinates):
     (-119.3, 47.3)
 
     """
+    # Define latitude orientation
+    flip = 1
+
+    if coordinates[0] == '-':
+        coordinates = coordinates[1:]
+        # Flip latitude to Southern Hemisphere
+        flip = -1
+
     # Based on the number of digits, find the correct place to split between lat and lon
     # Hires bulletins provide 7 digits for coordinates; regular bulletins provide 4 or 5 digits
     split_pos = int(len(coordinates) / 2)
     lat, lon = coordinates[:split_pos], coordinates[split_pos:]
 
     # Insert decimal point at the correct place and convert to float
-    lat = float(f'{lat[:2]}.{lat[2:]}')
+    lat = float(f'{lat[:2]}.{lat[2:]}') * flip
     lon = -float(f'{lon[:3]}.{lon[3:]}')
-
     return lon, lat
 
 
@@ -64,6 +74,7 @@ def _regroup_lines(iterable):
         yield parts
 
 
+@exporter.export
 def parse_wpc_surface_bulletin(bulletin, year=None):
     """Parse a coded surface bulletin from NWS WPC into a Pandas DataFrame.
 
@@ -91,7 +102,7 @@ def parse_wpc_surface_bulletin(bulletin, year=None):
         text = file.read().decode('utf-8')
 
     parsed_text = []
-    valid_time = datetime.utcnow()
+    valid_time = datetime.now(timezone.utc).replace(tzinfo=None)
     for parts in _regroup_lines(text.splitlines()):
         # A single file may have multiple sets of data that are valid at different times. Set
         # the valid_time string that will correspond to all the following lines parsed, until

@@ -1,10 +1,10 @@
 # Copyright (c) 2014,2015,2016,2017,2019 MetPy Developers.
 # Distributed under the terms of the BSD 3-Clause License.
 # SPDX-License-Identifier: BSD-3-Clause
-"""Make Skew-T Log-P based plots.
+"""Make thermodynamic diagrams.
 
-Contain tools for making Skew-T Log-P plots, including the base plotting class,
-`SkewT`, as well as a class for making a `Hodograph`.
+Contain tools for making thermodynamic diagrams, including the base plotting class,
+`SkewT`, derived `Stuve` and `Emagram` classes, and a class for making a `Hodograph`.
 """
 
 from contextlib import ExitStack
@@ -27,7 +27,7 @@ from ..calc import dewpoint, dry_lapse, el, lcl, moist_lapse, vapor_pressure, re
 from ..calc.tools import _delete_masked_points
 from ..interpolate import interpolate_1d
 from ..package_tools import Exporter
-from ..units import concatenate, units
+from ..units import concatenate, is_quantity, units
 
 exporter = Exporter(globals())
 
@@ -422,6 +422,10 @@ class SkewT:
                 raise ValueError('To convert to plotting units, units must be attached to '
                                  'u and v wind components.')
 
+        # Drop units for u,v since they're not used and trigger warnings
+        u = getattr(u, 'magnitude', u)
+        v = getattr(v, 'magnitude', v)
+
         # Assemble array of x-locations in axes space
         x = np.empty_like(pressure)
         x.fill(xloc)
@@ -742,6 +746,104 @@ class SkewT:
 
 
 @exporter.export
+class Stuve(SkewT):
+    r"""Make Stüve plots of data.
+
+    Stüve plots are are a thermodynamic diagram with temperature on the x-axis and
+    pressure scaled by p^(R/cp)=p^0.286 on the y-axis. This class is derived from the
+    SkewT class and has the same capabilities for plotting data, wind barbs,
+    dry and saturated adiabats, and mixing ratio lines.
+
+    Attributes
+    ----------
+    ax : `matplotlib.axes.Axes`
+        The underlying Axes instance, which can be used for calling additional
+        plot functions (e.g. `axvline`)
+
+    """
+
+    def __init__(self, fig=None, subplot=None, rect=None, aspect='auto'):
+        r"""Create Stüve plots.
+
+        Parameters
+        ----------
+        fig : matplotlib.figure.Figure, optional
+            Source figure to use for plotting. If none is given, a new
+            :class:`matplotlib.figure.Figure` instance will be created.
+        subplot : tuple[int, int, int] or `matplotlib.gridspec.SubplotSpec` instance, optional
+            Controls the size/position of the created subplot. This allows creating
+            the skewT as part of a collection of subplots. If subplot is a tuple, it
+            should conform to the specification used for
+            :meth:`matplotlib.figure.Figure.add_subplot`. The
+            :class:`matplotlib.gridspec.SubplotSpec`
+            can be created by using :class:`matplotlib.gridspec.GridSpec`.
+        rect : tuple[float, float, float, float], optional
+            Rectangle (left, bottom, width, height) in which to place the axes. This
+            allows the user to place the axes at an arbitrary point on the figure.
+        aspect : float, int, or Literal['auto'], optional
+            Aspect ratio (i.e. ratio of y-scale to x-scale) to maintain in the plot.
+            Defaults to ``'auto'`` which tells matplotlib to handle
+            the aspect ratio automatically.
+
+        """
+        super().__init__(fig=fig, rotation=0, subplot=subplot, rect=rect, aspect=aspect)
+
+        # Forward (f) and inverse (g) functions for Stuve pressure coordinate scaling
+        def f(p):
+            return p**0.286
+
+        def g(p):
+            return p**(1 / 0.286)
+
+        # Set the yaxis as Stuve
+        self.ax.set_yscale('function', functions=(f, g))
+
+
+@exporter.export
+class Emagram(SkewT):
+    r"""Make Emagram plots of data.
+
+    Emagram plots are T log-P thermodynamic diagrams. They differ from SkewT
+    in that the T axis is not skewed. This class is derived from the SkewT class and
+    has the same capabilities for plotting data, wind barbs, dry and saturated
+    adiabats, and mixing ratio lines.
+
+    Attributes
+    ----------
+    ax : `matplotlib.axes.Axes`
+        The underlying Axes instance, which can be used for calling additional
+        plot functions (e.g. `axvline`)
+
+    """
+
+    def __init__(self, fig=None, subplot=None, rect=None, aspect='auto'):
+        r"""Create Emagram plots.
+
+        Parameters
+        ----------
+        fig : matplotlib.figure.Figure, optional
+            Source figure to use for plotting. If none is given, a new
+            :class:`matplotlib.figure.Figure` instance will be created.
+        subplot : tuple[int, int, int] or `matplotlib.gridspec.SubplotSpec` instance, optional
+            Controls the size/position of the created subplot. This allows creating
+            the skewT as part of a collection of subplots. If subplot is a tuple, it
+            should conform to the specification used for
+            :meth:`matplotlib.figure.Figure.add_subplot`. The
+            :class:`matplotlib.gridspec.SubplotSpec`
+            can be created by using :class:`matplotlib.gridspec.GridSpec`.
+        rect : tuple[float, float, float, float], optional
+            Rectangle (left, bottom, width, height) in which to place the axes. This
+            allows the user to place the axes at an arbitrary point on the figure.
+        aspect : float, int, or Literal['auto'], optional
+            Aspect ratio (i.e. ratio of y-scale to x-scale) to maintain in the plot.
+            Defaults to ``'auto'`` which tells matplotlib to handle
+            the aspect ratio automatically.
+
+        """
+        super().__init__(fig=fig, rotation=0, subplot=subplot, rect=rect, aspect=aspect)
+
+
+@exporter.export
 class Hodograph:
     r"""Make a hodograph of wind data.
 
@@ -891,10 +993,12 @@ class Hodograph:
         variable besides the winds (e.g. heights or pressure levels) and either a colormap to
         color it with or a series of contour intervals and colors to create a colormap and
         norm to control colormapping. The intervals must always be in increasing
-        order. For using custom contour intervals with height data, the function will
-        automatically interpolate to the contour intervals from the height and wind data,
-        as well as convert the input contour intervals from height AGL to MSL to work with the
-        provided heights.
+        order.
+
+        When c and intervals are height data (`pint.Quantity` objects with units of length,
+        such as 'm' or 'km'), the function will automatically interpolate to the contour
+        intervals from the height and wind data, as well as convert the input contour intervals
+        from height AGL to MSL to work with the provided heights.
 
         Parameters
         ----------
@@ -927,7 +1031,7 @@ class Hodograph:
         if colors:
             cmap = mcolors.ListedColormap(colors)
             # If we are segmenting by height (a length), interpolate the contour intervals
-            if intervals.check('[length]'):
+            if is_quantity(intervals) and intervals.check('[length]'):
 
                 # Find any intervals not in the data and interpolate them
                 heights_min = np.nanmin(c)
@@ -953,7 +1057,8 @@ class Hodograph:
                 c = c.to_base_units()  # TODO: This shouldn't be required!
                 intervals = intervals.to_base_units()
 
-            norm = mcolors.BoundaryNorm(intervals.magnitude, cmap.N)
+            intervals_m = intervals.m if is_quantity(intervals) else intervals
+            norm = mcolors.BoundaryNorm(intervals_m, cmap.N)
             cmap.set_over('none')
             cmap.set_under('none')
             kwargs['cmap'] = cmap
@@ -964,7 +1069,8 @@ class Hodograph:
         else:
             line_args = self._form_line_args(kwargs)
 
-        # Do the plotting
+        # Do the plotting -- drop units on c since it's not used
+        c = getattr(c, 'magnitude', c)
         lc = colored_line(u, v, c, **line_args)
         self.ax.add_collection(lc)
         return lc

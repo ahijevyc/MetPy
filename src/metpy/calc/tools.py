@@ -5,13 +5,21 @@
 import contextlib
 import functools
 from inspect import Parameter, signature
+import itertools
 from operator import itemgetter
+import textwrap
 
 import numpy as np
-from numpy.core.numeric import normalize_axis_index
+
+# Can drop fallback once we rely on numpy>=2
+try:
+    from numpy.lib.array_utils import normalize_axis_index
+except ImportError:
+    from numpy.core.numeric import normalize_axis_index
+
 import numpy.ma as ma
 from pyproj import CRS, Geod, Proj
-from scipy.spatial import cKDTree
+from scipy.spatial import KDTree
 import xarray as xr
 
 from .. import _warnings
@@ -25,19 +33,19 @@ exporter = Exporter(globals())
 
 UND = 'UND'
 UND_ANGLE = -999.
-DIR_STRS = (
+DIR_STRS = [
     'N', 'NNE', 'NE', 'ENE',
     'E', 'ESE', 'SE', 'SSE',
     'S', 'SSW', 'SW', 'WSW',
     'W', 'WNW', 'NW', 'NNW',
     UND
-)  # note the order matters!
+]  # note the order matters!
 
 MAX_DEGREE_ANGLE = units.Quantity(360, 'degree')
 BASE_DEGREE_MULTIPLIER = units.Quantity(22.5, 'degree')
 
 DIR_DICT = {dir_str: i * BASE_DEGREE_MULTIPLIER for i, dir_str in enumerate(DIR_STRS)}
-DIR_DICT[UND] = np.nan
+DIR_DICT[UND] = units.Quantity(np.nan, 'degree')
 
 
 @exporter.export
@@ -294,16 +302,11 @@ def reduce_point_density(points, radius, priority=None):
     points = np.where(good_vals, points, 0)
 
     # Make a kd-tree to speed searching of data.
-    tree = cKDTree(points)
+    tree = KDTree(points)
 
     # Need to use sorted indices rather than sorting the position
     # so that the keep mask matches *original* order.
-    if priority is not None:
-        # Need to sort the locations in decreasing priority.
-        sorted_indices = np.argsort(priority)[::-1]
-    else:
-        # Take advantage of iterator nature of range here to avoid making big lists
-        sorted_indices = range(len(points))
+    sorted_indices = range(len(points)) if priority is None else np.argsort(priority)[::-1]
 
     # Keep all good points initially
     keep = np.logical_and.reduce(good_vals, axis=-1)
@@ -981,32 +984,35 @@ def xarray_derivative_wrap(func):
 
 def _add_grid_params_to_docstring(docstring: str, orig_includes: dict) -> str:
     """Add documentation for some dynamically added grid parameters to the docstring."""
-    other_params = docstring.find('Other Parameters')
-    blank = docstring.find('\n\n', other_params)
+    other_params = 'Other Parameters'
+    other_ind = docstring.find(other_params)
+    indent = docstring.find('-', other_ind) - other_ind - len(other_params) - 1  # -1 for \n
+    blank = docstring.find('\n\n', other_ind)
 
     entries = {
         'longitude': """
-    longitude : `pint.Quantity`, optional
-        Longitude of data. Optional if `xarray.DataArray` with latitude/longitude coordinates
-        used as input. Also optional if parallel_scale and meridional_scale are given. If
-        otherwise omitted, calculation will be carried out on a Cartesian, rather than
-        geospatial, grid. Keyword-only argument.""",
+longitude : `pint.Quantity`, optional
+    Longitude of data. Optional if `xarray.DataArray` with latitude/longitude coordinates
+    used as input. Also optional if parallel_scale and meridional_scale are given. If
+    otherwise omitted, calculation will be carried out on a Cartesian, rather than
+    geospatial, grid. Keyword-only argument.""",
         'latitude': """
-    latitude : `pint.Quantity`, optional
-        Latitude of data. Optional if `xarray.DataArray` with latitude/longitude coordinates
-        used as input. Also optional if parallel_scale and meridional_scale are given. If
-        otherwise omitted, calculation will be carried out on a Cartesian, rather than
-        geospatial, grid. Keyword-only argument.""",
+latitude : `pint.Quantity`, optional
+    Latitude of data. Optional if `xarray.DataArray` with latitude/longitude coordinates
+    used as input. Also optional if parallel_scale and meridional_scale are given. If
+    otherwise omitted, calculation will be carried out on a Cartesian, rather than
+    geospatial, grid. Keyword-only argument.""",
         'crs': """
-    crs : `pyproj.crs.CRS`, optional
-        Coordinate Reference System of data. Optional if `xarray.DataArray` with MetPy CRS
-        used as input. Also optional if parallel_scale and meridional_scale are given. If
-        otherwise omitted, calculation will be carried out on a Cartesian, rather than
-        geospatial, grid. Keyword-only argument."""
+crs : `pyproj.crs.CRS`, optional
+    Coordinate Reference System of data. Optional if `xarray.DataArray` with MetPy CRS
+    used as input. Also optional if parallel_scale and meridional_scale are given. If
+    otherwise omitted, calculation will be carried out on a Cartesian, rather than
+    geospatial, grid. Keyword-only argument."""
     }
 
     return ''.join([docstring[:blank],
-                    *(entries[p] for p, included in orig_includes.items() if not included),
+                    *(textwrap.indent(entries[p], ' ' * indent)
+                      for p, included in orig_includes.items() if not included),
                     docstring[blank:]])
 
 
@@ -1773,16 +1779,15 @@ def parse_angle(input_dir):
 
     """
     if isinstance(input_dir, str):
-        # abb_dirs = abbrieviated directions
-        abb_dirs = _clean_direction([_abbrieviate_direction(input_dir)])
+        abb_dir = _clean_direction([_abbreviate_direction(input_dir)])[0]
+        return DIR_DICT[abb_dir]
     elif hasattr(input_dir, '__len__'):  # handle np.array, pd.Series, list, and array-like
         input_dir_str = ','.join(_clean_direction(input_dir, preprocess=True))
-        abb_dir_str = _abbrieviate_direction(input_dir_str)
+        abb_dir_str = _abbreviate_direction(input_dir_str)
         abb_dirs = _clean_direction(abb_dir_str.split(','))
+        return units.Quantity.from_list(itemgetter(*abb_dirs)(DIR_DICT))
     else:  # handle unrecognizable scalar
-        return np.nan
-
-    return itemgetter(*abb_dirs)(DIR_DICT)
+        return units.Quantity(np.nan, 'degree')
 
 
 def _clean_direction(dir_list, preprocess=False):
@@ -1795,7 +1800,7 @@ def _clean_direction(dir_list, preprocess=False):
                 for the_dir in dir_list]
 
 
-def _abbrieviate_direction(ext_dir_str):
+def _abbreviate_direction(ext_dir_str):
     """Convert extended (non-abbreviated) directions to abbreviation."""
     return (ext_dir_str
             .upper()
@@ -1831,6 +1836,13 @@ def angle_to_direction(input_angle, full=False, level=3):
     direction
         The directional text
 
+    Examples
+    --------
+    >>> from metpy.calc import angle_to_direction
+    >>> from metpy.units import units
+    >>> angle_to_direction(225. * units.deg)
+    'SW'
+
     """
     try:  # strip units temporarily
         origin_units = input_angle.units
@@ -1844,13 +1856,15 @@ def angle_to_direction(input_angle, full=False, level=3):
     else:
         scalar = False
 
+    np_input_angle = np.array(input_angle).astype(float)
+    origshape = np_input_angle.shape
+    ndarray = len(origshape) > 1
     # clean any numeric strings, negatives, and None does not handle strings with alphabet
-    input_angle = units.Quantity(np.array(input_angle).astype(float), origin_units)
-    input_angle[input_angle < 0] = units.Quantity(np.nan, origin_units)
+    input_angle = units.Quantity(np_input_angle, origin_units)
+    input_angle[input_angle < 0] = np.nan
 
-    # normalizer used for angles > 360 degree to normalize between 0 - 360
-    normalizer = np.array(input_angle.m / MAX_DEGREE_ANGLE.m, dtype=int)
-    norm_angles = abs(input_angle - MAX_DEGREE_ANGLE * normalizer)
+    # Normalize between 0 - 360
+    norm_angles = input_angle % MAX_DEGREE_ANGLE
 
     if level == 3:
         nskip = 1
@@ -1862,8 +1876,10 @@ def angle_to_direction(input_angle, full=False, level=3):
         err_msg = 'Level of complexity cannot be less than 1 or greater than 3!'
         raise ValueError(err_msg)
 
-    angle_dict = {i * BASE_DEGREE_MULTIPLIER.m * nskip: dir_str
-                  for i, dir_str in enumerate(DIR_STRS[::nskip])}
+    angle_dict = {
+        i * BASE_DEGREE_MULTIPLIER.m * nskip: dir_str
+        for i, dir_str in enumerate(DIR_STRS[::nskip])
+    }
     angle_dict[MAX_DEGREE_ANGLE.m] = 'N'  # handle edge case of 360.
     angle_dict[UND_ANGLE] = UND
 
@@ -1879,22 +1895,29 @@ def angle_to_direction(input_angle, full=False, level=3):
     # ['N', 'N', 'NE', 'NE', 'E', 'E', 'SE', 'SE',
     #  'S', 'S', 'SW', 'SW', 'W', 'W', 'NW', 'NW']
 
-    multiplier = np.round(
-        (norm_angles / BASE_DEGREE_MULTIPLIER / nskip) - 0.001).m
-    round_angles = (multiplier * BASE_DEGREE_MULTIPLIER.m * nskip)
+    multiplier = np.round((norm_angles / BASE_DEGREE_MULTIPLIER / nskip) - 0.001).m
+    round_angles = multiplier * BASE_DEGREE_MULTIPLIER.m * nskip
     round_angles[np.where(np.isnan(round_angles))] = UND_ANGLE
+    if ndarray:
+        round_angles = round_angles.flatten()
+    dir_str_arr = itemgetter(*round_angles)(angle_dict)  # returns str or tuple
+    if full:
+        dir_str_arr = ','.join(dir_str_arr)
+        dir_str_arr = _unabbreviate_direction(dir_str_arr)
+        dir_str_arr = dir_str_arr.split(',')
+        if scalar:
+            return dir_str_arr[0]
+        else:
+            return np.array(dir_str_arr).reshape(origshape)
+    else:
+        if scalar:
+            return dir_str_arr
+        else:
+            return np.array(dir_str_arr).reshape(origshape)
 
-    dir_str_arr = itemgetter(*round_angles)(angle_dict)  # for array
-    if not full:
-        return dir_str_arr
 
-    dir_str_arr = ','.join(dir_str_arr)
-    dir_str_arr = _unabbrieviate_direction(dir_str_arr)
-    return dir_str_arr.replace(',', ' ') if scalar else dir_str_arr.split(',')
-
-
-def _unabbrieviate_direction(abb_dir_str):
-    """Convert abbrieviated directions to non-abbrieviated direction."""
+def _unabbreviate_direction(abb_dir_str):
+    """Convert abbreviated directions to non-abbreviated direction."""
     return (abb_dir_str
             .upper()
             .replace(UND, 'Undefined ')
@@ -1924,3 +1947,114 @@ def _remove_nans(*variables):
     for v in variables:
         ret.append(v[~mask])
     return ret
+
+
+def _neighbor_inds(y, x):
+    """Generate index (row, col) pairs for each neighbor of (x, y)."""
+    incs = (-1, 0, 1)
+    for dx, dy in itertools.product(incs, incs):
+        yield y + dy, x + dx
+
+
+def _find_uf(uf, item):
+    """Find the root item for ``item`` in the union find structure ``uf``."""
+    # uf is a dictionary mapping item->parent. Loop until we find parent=parent.
+    while (next_item := uf[item]) != item:
+        uf[item] = uf[next_item]
+        item = next_item
+    return item
+
+
+@exporter.export
+def peak_persistence(arr, *, maxima=True):
+    """Return all local extrema points ordered by their persistence.
+
+    This uses the concept of persistent homology to find peaks ordered by their persistence.
+    [Huber2021]_ This essentially works akin to a falling water level and seeing how long a
+    peak persists until the falling level allows connection to a larger, neighboring peak.
+    NaN points are ignored.
+
+    Parameters
+    ----------
+    arr : array-like
+        2-dimensional array of numeric values to search
+    maxima : bool, optional
+        Whether to find local maxima, defaults to True. If False, local minima will be found
+        instead.
+
+    Returns
+    -------
+    list[((int, int), float)]
+        Point indices and persistence values in descending order of persistence
+
+    See Also
+    --------
+    find_peaks
+
+    """
+    # Get the collection of points and values in descending strength of peak.
+    points = sorted((item for item in np.ndenumerate(arr) if not np.isnan(item[1])),
+                    key=lambda i: i[1], reverse=maxima)
+
+    # The global max will never be merged and thus should be added to the final list
+    # of persisted points
+    per = {points[0][0]: np.inf}
+
+    # Loop over all points and add them to the set (a dict storing as a union-find data
+    # structure) one-by-one
+    peaks = {}
+    for pt, val in points:
+        # Look to see if any neighbors of this point are attached to any existing peaks
+        if already_done := {_find_uf(peaks, n) for n in _neighbor_inds(*pt) if n in peaks}:
+
+            # Get these peaks in order of value
+            biggest, *others = sorted(already_done, key=lambda i: arr[i], reverse=maxima)
+
+            # Connect our point to the biggest peak
+            peaks[pt] = biggest
+
+            # Any other existing peaks will join to this biggest and will end their
+            # persistence, denoted as the difference between their original level and the
+            # current level
+            for neighbor in others:
+                peaks[neighbor] = biggest
+                if arr[neighbor] != val:
+                    per[neighbor] = abs(arr[neighbor] - val)
+        else:
+            peaks[pt] = pt
+
+    # Return the points in descending order of persistence
+    return sorted(per.items(), key=lambda i: i[1], reverse=True)
+
+
+@exporter.export
+def find_peaks(arr, *, maxima=True, iqr_ratio=2):
+    """Search array for significant peaks (or valleys).
+
+    Parameters
+    ----------
+    arr: array-like
+        2-dimensional array of numeric values to search
+    maxima: bool, optional
+        Whether to find local maxima, defaults to True. If False, local minima will be found
+        instead.
+    iqr_ratio: float, optional
+        Ratio of interquantile range (Q1 - Q3) of peak persistence values to use as a
+        threshold (when added to Q3) for significance of peaks. Defaults to 2.
+
+    Returns
+    -------
+    row indices, column indices
+        Locations of significant peaks
+
+    See Also
+    --------
+    peak_persistence
+
+    """
+    peaks = peak_persistence(arr, maxima=maxima)
+    q1, q3 = np.percentile([p[-1] for p in peaks], (25, 75))
+    thresh = q3 + iqr_ratio * (q3 - q1)
+    return map(list,
+               zip(*(it[0] for it in itertools.takewhile(lambda i: i[1] > thresh, peaks)),
+                   strict=True))

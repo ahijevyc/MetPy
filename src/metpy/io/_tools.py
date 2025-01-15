@@ -57,14 +57,14 @@ def open_as_needed(filename, mode='rb'):
         return open(filename, mode, **kwargs)  # noqa: SIM115
 
 
-class NamedStruct(Struct):
+class NamedStruct:
     """Parse bytes using :class:`Struct` but provide named fields."""
 
     def __init__(self, info, prefmt='', tuple_name=None):
         """Initialize the NamedStruct."""
         if tuple_name is None:
             tuple_name = 'NamedStruct'
-        names, fmts = zip(*info)
+        names, fmts = zip(*info, strict=False)
         self.converters = {}
         conv_off = 0
         for ind, i in enumerate(info):
@@ -73,7 +73,12 @@ class NamedStruct(Struct):
             elif not i[0]:  # Skip items with no name
                 conv_off += 1
         self._tuple = namedtuple(tuple_name, ' '.join(n for n in names if n))
-        super().__init__(prefmt + ''.join(f for f in fmts if f))
+        self._struct = Struct(prefmt + ''.join(f for f in fmts if f))
+
+    @property
+    def size(self):
+        """Return the size of the struct in bytes."""
+        return self._struct.size
 
     def _create(self, items):
         if self.converters:
@@ -90,11 +95,11 @@ class NamedStruct(Struct):
 
     def unpack(self, s):
         """Parse bytes and return a namedtuple."""
-        return self._create(super().unpack(s))
+        return self._create(self._struct.unpack(s))
 
     def unpack_from(self, buff, offset=0):
         """Read bytes from a buffer and return as a namedtuple."""
-        return self._create(super().unpack_from(buff, offset))
+        return self._create(self._struct.unpack_from(buff, offset))
 
     def unpack_file(self, fobj):
         """Unpack the next bytes from a file object."""
@@ -103,33 +108,38 @@ class NamedStruct(Struct):
     def pack(self, **kwargs):
         """Pack the arguments into bytes using the structure."""
         t = self.make_tuple(**kwargs)
-        return super().pack(*t)
+        return self._struct.pack(*t)
 
 
 # This works around times when we have more than 255 items and can't use
 # NamedStruct. This is a CPython limit for arguments.
-class DictStruct(Struct):
+class DictStruct:
     """Parse bytes using :class:`Struct` but provide named fields using dictionary access."""
 
     def __init__(self, info, prefmt=''):
         """Initialize the DictStruct."""
-        names, formats = zip(*info)
+        names, formats = zip(*info, strict=False)
 
         # Remove empty names
         self._names = [n for n in names if n]
 
-        super().__init__(prefmt + ''.join(f for f in formats if f))
+        self._struct = Struct(prefmt + ''.join(f for f in formats if f))
+
+    @property
+    def size(self):
+        """Return the size of the struct in bytes."""
+        return self._struct.size
 
     def _create(self, items):
-        return dict(zip(self._names, items))
+        return dict(zip(self._names, items, strict=False))
 
     def unpack(self, s):
         """Parse bytes and return a dict."""
-        return self._create(super().unpack(s))
+        return self._create(self._struct.unpack(s))
 
     def unpack_from(self, buff, offset=0):
         """Unpack the next bytes from a file object."""
-        return self._create(super().unpack_from(buff, offset))
+        return self._create(self._struct.unpack_from(buff, offset))
 
 
 class Enum:
@@ -141,7 +151,7 @@ class Enum:
         self.val_map = dict(enumerate(args))
 
         # Invert the kwargs dict so that we can map from value to name
-        self.val_map.update(zip(kwargs.values(), kwargs.keys()))
+        self.val_map.update(zip(kwargs.values(), kwargs.keys(), strict=False))
 
     def __call__(self, val):
         """Map an integer to the string representation."""

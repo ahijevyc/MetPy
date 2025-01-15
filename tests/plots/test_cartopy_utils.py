@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import pytest
 
 import metpy.plots as mpplots
+from metpy.testing import version_check
 
 
 @pytest.mark.mpl_image_compare(tolerance=0.053, remove_text=True)
@@ -30,7 +31,7 @@ def test_us_county_scales(ccrs):
     ax2 = fig.add_subplot(1, 3, 2, projection=proj)
     ax3 = fig.add_subplot(1, 3, 3, projection=proj)
 
-    for scale, axis in zip(['20m', '5m', '500k'], [ax1, ax2, ax3]):
+    for scale, axis in zip(['20m', '5m', '500k'], [ax1, ax2, ax3], strict=False):
         axis.set_extent([270.25, 270.9, 38.15, 38.75], ccrs.Geodetic())
         axis.add_feature(mpplots.USCOUNTIES.with_scale(scale))
     return fig
@@ -48,7 +49,8 @@ def test_us_states_defaults(ccrs):
     return fig
 
 
-@pytest.mark.mpl_image_compare(tolerance=0.092, remove_text=True)
+@pytest.mark.mpl_image_compare(tolerance=0.248 if version_check('cartopy<0.23') else 0.,
+                               remove_text=True)
 def test_us_states_scales(ccrs):
     """Test the default US States plotting with all scales."""
     proj = ccrs.LambertConformal(central_longitude=-85.0, central_latitude=45.0)
@@ -58,7 +60,7 @@ def test_us_states_scales(ccrs):
     ax2 = fig.add_subplot(1, 3, 2, projection=proj)
     ax3 = fig.add_subplot(1, 3, 3, projection=proj)
 
-    for scale, axis in zip(['20m', '5m', '500k'], [ax1, ax2, ax3]):
+    for scale, axis in zip(['20m', '5m', '500k'], [ax1, ax2, ax3], strict=False):
         axis.set_extent([270, 280, 28, 39], ccrs.Geodetic())
         axis.add_feature(mpplots.USSTATES.with_scale(scale))
     return fig

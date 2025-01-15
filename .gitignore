@@ -26,5 +26,7 @@ docs/build/
 docs/examples
 docs/tutorials
 docs/api/generated
+docs/api/areas.rst
 examples/scripts
 test_output/
+docs/sg_execution_times.rst

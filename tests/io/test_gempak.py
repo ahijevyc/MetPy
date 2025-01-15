@@ -7,7 +7,7 @@ from datetime import datetime
 import logging
 
 import numpy as np
-from numpy.testing import assert_allclose, assert_almost_equal
+from numpy.testing import assert_allclose, assert_almost_equal, assert_equal
 import pandas as pd
 import pytest
 
@@ -15,6 +15,18 @@ from metpy.cbook import get_test_data
 from metpy.io.gempak import GempakGrid, GempakSounding, GempakSurface
 
 logging.getLogger('metpy.io.gempak').setLevel(logging.ERROR)
+
+
+@pytest.mark.parametrize('order', ['little', 'big'])
+def test_byte_swap(order):
+    """"Test byte swapping."""
+    g = get_test_data(f'gem_{order}_endian.grd')
+
+    grid = GempakGrid(g).gdxarray()[0].squeeze()
+
+    reference = np.ones((113, 151), dtype='int32')
+
+    assert_equal(grid, reference)
 
 
 @pytest.mark.parametrize('grid_name', ['none', 'diff', 'dec', 'grib'])
@@ -26,7 +38,8 @@ def test_grid_loading(grid_name):
     )
     gio = grid[0].values.squeeze()
 
-    gempak = np.load(get_test_data(f'gem_packing_{grid_name}.npz'))['values']
+    gempak = np.load(get_test_data(f'gem_packing_{grid_name}.npz',
+                                   as_file_obj=False))['values']
 
     assert_allclose(gio, gempak, rtol=1e-6, atol=0)
 
@@ -56,7 +69,8 @@ def test_merged_sounding():
     gimxr = gso[0].imxr.values.squeeze()
     gdtar = gso[0].dtar.values.squeeze()
 
-    gempak = pd.read_csv(get_test_data('gem_model_mrg.csv'), na_values=-9999)
+    gempak = pd.read_csv(get_test_data('gem_model_mrg.csv', as_file_obj=False),
+                         na_values=-9999)
     dpres = gempak.PRES.values
     dtemp = gempak.TMPC.values
     ddwpt = gempak.DWPC.values
@@ -92,6 +106,35 @@ def test_merged_sounding():
     np.testing.assert_allclose(gdtar, ddtar, rtol=1e-10, atol=1e-2)
 
 
+def test_merged_sounding_no_packing():
+    """Test loading a merged sounding without data packing."""
+    gso = GempakSounding(get_test_data('gem_merged_nopack.snd')).snxarray(
+        station_id='OUN')
+
+    gpres = gso[0].pressure.values
+    gtemp = gso[0].temp.values.squeeze()
+    gdwpt = gso[0].dwpt.values.squeeze()
+    gdrct = gso[0].drct.values.squeeze()
+    gsped = gso[0].sped.values.squeeze()
+    ghght = gso[0].hght.values.squeeze()
+
+    gempak = pd.read_csv(get_test_data('gem_merged_nopack.csv', as_file_obj=False),
+                         na_values=-9999)
+    dpres = gempak.PRES.values
+    dtemp = gempak.TEMP.values
+    ddwpt = gempak.DWPT.values
+    ddrct = gempak.DRCT.values
+    dsped = gempak.SPED.values
+    dhght = gempak.HGHT.values
+
+    assert_allclose(gpres, dpres, rtol=1e-10, atol=1e-2)
+    assert_allclose(gtemp, dtemp, rtol=1e-10, atol=1e-2)
+    assert_allclose(gdwpt, ddwpt, rtol=1e-10, atol=1e-2)
+    assert_allclose(gdrct, ddrct, rtol=1e-10, atol=1e-2)
+    assert_allclose(gsped, dsped, rtol=1e-10, atol=1e-2)
+    assert_allclose(ghght, dhght, rtol=1e-10, atol=1e-1)
+
+
 @pytest.mark.parametrize('gem,gio,station', [
     ('gem_sigw_hght_unmrg.csv', 'gem_sigw_hght_unmrg.snd', 'TOP'),
     ('gem_sigw_pres_unmrg.csv', 'gem_sigw_pres_unmrg.snd', 'WAML')
@@ -111,7 +154,7 @@ def test_unmerged_sounding(gem, gio, station):
     gsped = gso[0].sped.values.squeeze()
     ghght = gso[0].hght.values.squeeze()
 
-    gempak = pd.read_csv(get_test_data(f'{gem}'), na_values=-9999)
+    gempak = pd.read_csv(get_test_data(f'{gem}', as_file_obj=False), na_values=-9999)
     dpres = gempak.PRES.values
     dtemp = gempak.TEMP.values
     ddwpt = gempak.DWPT.values
@@ -141,7 +184,8 @@ def test_unmerged_sigw_pressure_sounding():
     gsped = gso[0].sped.values.squeeze()
     ghght = gso[0].hght.values.squeeze()
 
-    gempak = pd.read_csv(get_test_data('gem_sigw_pres_unmrg_man_bgl.csv'), na_values=-9999)
+    gempak = pd.read_csv(get_test_data('gem_sigw_pres_unmrg_man_bgl.csv', as_file_obj=False),
+                         na_values=-9999)
     dpres = gempak.PRES.values
     dtemp = gempak.TEMP.values
     ddwpt = gempak.DWPT.values
@@ -157,20 +201,34 @@ def test_unmerged_sigw_pressure_sounding():
     assert_allclose(ghght, dhght, rtol=1e-10, atol=1e-1)
 
 
+def test_climate_surface():
+    """Test to read a cliamte surface file."""
+    gsf = GempakSurface(get_test_data('gem_climate.sfc'))
+    gstns = gsf.sfjson()
+
+    gempak = pd.read_csv(get_test_data('gem_climate.csv', as_file_obj=False))
+    gempak['YYMMDD/HHMM'] = pd.to_datetime(gempak['YYMMDD/HHMM'], format='%y%m%d/%H%M')
+    gempak = gempak.set_index(['STN', 'YYMMDD/HHMM'])
+
+    for stn in gstns:
+        idx_key = (stn['properties']['station_id'],
+                   stn['properties']['date_time'])
+        gemsfc = gempak.loc[idx_key, :]
+
+        for param, val in stn['values'].items():
+            assert val == pytest.approx(gemsfc[param.upper()])
+
+
 def test_standard_surface():
     """Test to read a standard surface file."""
-    def dtparse(string):
-        return datetime.strptime(string, '%y%m%d/%H%M')
-
     skip = ['text', 'spcl']
 
     gsf = GempakSurface(get_test_data('gem_std.sfc'))
     gstns = gsf.sfjson()
 
-    gempak = pd.read_csv(get_test_data('gem_std.csv'),
-                         index_col=['STN', 'YYMMDD/HHMM'],
-                         parse_dates=['YYMMDD/HHMM'],
-                         date_parser=dtparse)
+    gempak = pd.read_csv(get_test_data('gem_std.csv', as_file_obj=False))
+    gempak['YYMMDD/HHMM'] = pd.to_datetime(gempak['YYMMDD/HHMM'], format='%y%m%d/%H%M')
+    gempak = gempak.set_index(['STN', 'YYMMDD/HHMM'])
 
     for stn in gstns:
         idx_key = (stn['properties']['station_id'],
@@ -184,17 +242,13 @@ def test_standard_surface():
 
 def test_ship_surface():
     """Test to read a ship surface file."""
-    def dtparse(string):
-        return datetime.strptime(string, '%y%m%d/%H%M')
-
     skip = ['text', 'spcl']
 
     gsf = GempakSurface(get_test_data('gem_ship.sfc'))
 
-    gempak = pd.read_csv(get_test_data('gem_ship.csv'),
-                         index_col=['STN', 'YYMMDD/HHMM'],
-                         parse_dates=['YYMMDD/HHMM'],
-                         date_parser=dtparse)
+    gempak = pd.read_csv(get_test_data('gem_ship.csv', as_file_obj=False))
+    gempak['YYMMDD/HHMM'] = pd.to_datetime(gempak['YYMMDD/HHMM'], format='%y%m%d/%H%M')
+    gempak = gempak.set_index(['STN', 'YYMMDD/HHMM'])
     gempak.sort_index(inplace=True)
 
     uidx = gempak.index.unique()
@@ -220,7 +274,7 @@ def test_coordinates_creation(proj_type):
     decode_lat = grid.lat
     decode_lon = grid.lon
 
-    gempak = np.load(get_test_data(f'gem_{proj_type}.npz'))
+    gempak = np.load(get_test_data(f'gem_{proj_type}.npz', as_file_obj=False))
     true_lat = gempak['lat']
     true_lon = gempak['lon']
 
@@ -266,31 +320,56 @@ def test_date_parsing():
     assert dat == datetime(2000, 1, 2)
 
 
+@pytest.mark.parametrize('access_type', ['STID', 'STNM'])
+def test_surface_access(access_type):
+    """Test for proper surface retrieval with multi-parameter filter."""
+    g = get_test_data('gem_surface_with_text.sfc')
+    gsf = GempakSurface(g)
+
+    if access_type == 'STID':
+        gsf.sfjson(station_id='MSN', country='US', state='WI',
+                   date_time='202109070000')
+    elif access_type == 'STNM':
+        gsf.sfjson(station_number=726410, country='US', state='WI',
+                   date_time='202109070000')
+
+
 @pytest.mark.parametrize('text_type,date_time', [
     ('text', '202109070000'), ('spcl', '202109071600')
 ])
 def test_surface_text(text_type, date_time):
     """Test text decoding of surface hourly and special observations."""
     g = get_test_data('gem_surface_with_text.sfc')
-    d = get_test_data('gem_surface_with_text.csv')
-
     gsf = GempakSurface(g)
     text = gsf.nearest_time(date_time, station_id='MSN')[0]['values'][text_type]
 
-    gempak = pd.read_csv(d)
+    gempak = pd.read_csv(get_test_data('gem_surface_with_text.csv', as_file_obj=False))
     gem_text = gempak.loc[:, text_type.upper()][0]
 
     assert text == gem_text
+
+
+@pytest.mark.parametrize('access_type', ['STID', 'STNM'])
+def test_sounding_access(access_type):
+    """Test for proper sounding retrieval with multi-parameter filter."""
+    g = get_test_data('gem_merged_nopack.snd')
+    gso = GempakSounding(g)
+
+    if access_type == 'STID':
+        gso.snxarray(station_id='OUN', country='US', state='OK',
+                     date_time='202101200000')
+    elif access_type == 'STNM':
+        gso.snxarray(station_number=72357, country='US', state='OK',
+                     date_time='202101200000')
 
 
 @pytest.mark.parametrize('text_type', ['txta', 'txtb', 'txtc', 'txpb'])
 def test_sounding_text(text_type):
     """Test for proper decoding of coded message text."""
     g = get_test_data('gem_unmerged_with_text.snd')
-    d = get_test_data('gem_unmerged_with_text.csv')
-
     gso = GempakSounding(g).snxarray(station_id='OUN')[0]
-    gempak = pd.read_csv(d)
+
+    gempak = pd.read_csv(get_test_data('gem_unmerged_with_text.csv', as_file_obj=False))
 
     text = gso.attrs['WMO_CODES'][text_type]
     gem_text = gempak.loc[:, text_type.upper()][0]
@@ -319,6 +398,22 @@ def test_special_surface_observation():
     assert stn['chc2'] == 8004
     assert stn['chc3'] == -9999
     assert stn['vsby'] == 2
+
+
+def test_multi_level_multi_time_access():
+    """Test accessing data with multiple levels and times."""
+    g = get_test_data('gem_multilevel_multidate.grd')
+
+    grid = GempakGrid(g)
+
+    grid.gdxarray(
+        parameter='STPC',
+        date_time='202403040000',
+        coordinate='HGHT',
+        level=0,
+        date_time2='202403050000',
+        level2=1
+    )
 
 
 def test_multi_time_grid():

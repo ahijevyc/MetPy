@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: BSD-3-Clause
 """Test the `thermo` module."""
 
+import platform
+import sys
 import warnings
 
 import numpy as np
@@ -12,16 +14,19 @@ import xarray as xr
 from metpy.calc import (brunt_vaisala_frequency, brunt_vaisala_frequency_squared,
                         brunt_vaisala_period, cape_cin, ccl, cross_totals, density, dewpoint,
                         dewpoint_from_relative_humidity, dewpoint_from_specific_humidity,
-                        dry_lapse, dry_static_energy, el, equivalent_potential_temperature,
-                        exner_function, gradient_richardson_number, InvalidSoundingError,
+                        downdraft_cape, dry_lapse, dry_static_energy, el,
+                        equivalent_potential_temperature, exner_function, galvez_davison_index,
+                        gradient_richardson_number, InvalidSoundingError,
                         isentropic_interpolation, isentropic_interpolation_as_dataset, k_index,
                         lcl, lfc, lifted_index, mixed_layer, mixed_layer_cape_cin,
                         mixed_parcel, mixing_ratio, mixing_ratio_from_relative_humidity,
-                        mixing_ratio_from_specific_humidity, moist_lapse, moist_static_energy,
-                        most_unstable_cape_cin, most_unstable_parcel, parcel_profile,
-                        parcel_profile_with_lcl, parcel_profile_with_lcl_as_dataset,
-                        potential_temperature, psychrometric_vapor_pressure_wet,
-                        relative_humidity_from_dewpoint, relative_humidity_from_mixing_ratio,
+                        mixing_ratio_from_specific_humidity, moist_air_gas_constant,
+                        moist_air_poisson_exponent, moist_air_specific_heat_pressure,
+                        moist_lapse, moist_static_energy, most_unstable_cape_cin,
+                        most_unstable_parcel, parcel_profile, parcel_profile_with_lcl,
+                        parcel_profile_with_lcl_as_dataset, potential_temperature,
+                        psychrometric_vapor_pressure_wet, relative_humidity_from_dewpoint,
+                        relative_humidity_from_mixing_ratio,
                         relative_humidity_from_specific_humidity,
                         relative_humidity_wet_psychrometric,
                         saturation_equivalent_potential_temperature, saturation_mixing_ratio,
@@ -32,10 +37,63 @@ from metpy.calc import (brunt_vaisala_frequency, brunt_vaisala_frequency_squared
                         thickness_hydrostatic_from_relative_humidity, total_totals_index,
                         vapor_pressure, vertical_totals, vertical_velocity,
                         vertical_velocity_pressure, virtual_potential_temperature,
-                        virtual_temperature, wet_bulb_temperature)
+                        virtual_temperature, virtual_temperature_from_dewpoint,
+                        water_latent_heat_melting, water_latent_heat_sublimation,
+                        water_latent_heat_vaporization, wet_bulb_potential_temperature,
+                        wet_bulb_temperature)
 from metpy.calc.thermo import _find_append_zero_crossings
-from metpy.testing import assert_almost_equal, assert_array_almost_equal, assert_nan
+from metpy.constants import Cp_d, kappa, Lf, Ls, Lv, Rd, T0
+from metpy.testing import (assert_almost_equal, assert_array_almost_equal, assert_nan,
+                           version_check)
 from metpy.units import is_quantity, masked_array, units
+
+
+def test_moist_air_gas_constant():
+    """Test calculation of gas constant for moist air."""
+    q = 9 * units('g/kg')
+    assert_almost_equal(moist_air_gas_constant(q), 288.62 * units('J / kg / K'), 2)
+    assert_almost_equal(moist_air_gas_constant(0), Rd)
+
+
+def test_moist_air_specific_heat_pressure():
+    """Test calculation of specific heat for moist air."""
+    q = 9 * units('g/kg')
+    assert_almost_equal(moist_air_specific_heat_pressure(q), 1012.36 * units('J / kg /K'), 2)
+    assert_almost_equal(moist_air_specific_heat_pressure(0), Cp_d)
+
+
+def test_moist_air_poisson_exponent():
+    """Test calculation of kappa for moist air."""
+    q = 9 * units('g/kg')
+    assert_almost_equal(moist_air_poisson_exponent(q), 0.2851, 3)
+    assert_almost_equal(moist_air_poisson_exponent(0), kappa)
+
+
+def test_water_latent_heat_vaporization():
+    """Test temperature-dependent calculation of latent heat of vaporization for water."""
+    temperature = 300 * units.K
+    # Divide out sig figs in results for decimal comparison
+    assert_almost_equal(water_latent_heat_vaporization(temperature) / 10**6,
+                        2.4375 * units('J / kg'), 4)
+    assert_almost_equal(water_latent_heat_vaporization(T0), Lv)
+
+
+def test_water_latent_heat_sublimation():
+    """Test temperature-dependent calculation of latent heat of sublimation for water."""
+    temperature = 233 * units.K
+    # Divide out sig figs in results for decimal comparison
+    assert_almost_equal(water_latent_heat_sublimation(temperature) / 10**6,
+                        2.8438 * units('J / kg'), 4)
+    assert_almost_equal(water_latent_heat_sublimation(T0), Ls)
+
+
+def test_water_latent_heat_melting():
+    """Test temperature-dependent calculation of latent heat of melting for water."""
+    temperature = 233 * units.K
+    # Divide out sig figs in results for decimal comparison
+    assert_almost_equal(water_latent_heat_melting(temperature) / 10**6,
+                        0.4192 * units('J / kg'), 4)
+    assert_almost_equal(water_latent_heat_melting(T0), Lf)
 
 
 def test_relative_humidity_from_dewpoint():
@@ -136,9 +194,9 @@ def test_moist_lapse_ref_pressure():
 def test_moist_lapse_multiple_temps():
     """Test moist_lapse with multiple starting temperatures."""
     temp = moist_lapse(np.array([1050., 800., 600., 500., 400.]) * units.mbar,
-                       np.array([19.85, np.nan, 19.85]) * units.degC, 1000. * units.mbar)
+                       np.array([19.85, 25.6, 19.85]) * units.degC, 1000. * units.mbar)
     true_temp = np.array([[294.76, 284.64, 272.81, 264.42, 252.91],
-                          [np.nan, np.nan, np.nan, np.nan, np.nan],
+                          [300.35, 291.27, 281.05, 274.05, 264.64],
                           [294.76, 284.64, 272.81, 264.42, 252.91]]) * units.kelvin
     assert_array_almost_equal(temp, true_temp, 2)
 
@@ -191,6 +249,23 @@ def test_moist_lapse_starting_points(start, direction):
     pressure = units.Quantity([1000, 925, 850, 700, 600], 'hPa')[::direction]
     temp = moist_lapse(pressure, truth[start], pressure[start])
     assert_almost_equal(temp, truth, 4)
+
+
+@pytest.mark.xfail(platform.machine() == 'aarch64',
+                   reason='ValueError is not raised on aarch64')
+@pytest.mark.xfail(platform.machine() == 'arm64', reason='ValueError is not raised on Mac M2')
+@pytest.mark.xfail((sys.platform == 'win32') and version_check('scipy<1.11.3'),
+                   reason='solve_ivp() does not error on Windows + SciPy < 1.11.3')
+@pytest.mark.filterwarnings('ignore:overflow encountered in exp:RuntimeWarning')
+@pytest.mark.filterwarnings(r'ignore:invalid value encountered in \w*divide:RuntimeWarning')
+@pytest.mark.filterwarnings(r'ignore:.*Excess accuracy requested.*:UserWarning')
+def test_moist_lapse_failure():
+    """Test moist_lapse under conditions that cause the ODE solver to fail."""
+    p = np.logspace(3, -1, 10) * units.hPa
+    with pytest.raises(ValueError) as exc:
+        moist_lapse(p, 6 * units.degC)
+
+    assert 'too small values' in str(exc)
 
 
 def test_parcel_profile():
@@ -647,6 +722,27 @@ def test_lfc_equals_lcl():
     assert_almost_equal(lfc_temp, 15.8714 * units.celsius, 2)
 
 
+def test_lfc_profile_nan():
+    """Test LFC when the profile includes NaN values."""
+    levels = np.array([959., 779.2, 751.3, 724.3, 700., 269.]) * units.mbar
+    temperatures = np.array([22.2, 14.6, np.nan, 9.4, 7., -38.]) * units.degC
+    dewpoints = np.array([19., -11.2, -10.8, -10.4, np.nan, -53.2]) * units.degC
+    lfc_pressure, lfc_temperature = lfc(levels, temperatures, dewpoints)
+    assert_almost_equal(lfc_pressure, 727.3365 * units.mbar, 3)
+    assert_almost_equal(lfc_temperature, 9.6977 * units.degC, 3)
+
+
+def test_lfc_profile_nan_with_parcel_profile():
+    """Test LFC when the profile includes NaN values, and parcel temp profile is specified."""
+    levels = np.array([959., 779.2, 751.3, 724.3, 700., 269.]) * units.mbar
+    temperatures = np.array([22.2, 14.6, np.nan, 9.4, 7., -38.]) * units.degC
+    dewpoints = np.array([19., -11.2, -10.8, -10.4, np.nan, -53.2]) * units.degC
+    parcel_temps = parcel_profile(levels, temperatures[0], dewpoints[0]).to('degC')
+    lfc_pressure, lfc_temperature = lfc(levels, temperatures, dewpoints, parcel_temps)
+    assert_almost_equal(lfc_pressure, 727.3365 * units.mbar, 3)
+    assert_almost_equal(lfc_temperature, 9.6977 * units.degC, 3)
+
+
 def test_sensitive_sounding():
     """Test quantities for a sensitive sounding (#902)."""
     # This sounding has a very small positive area in the low level. It's only captured
@@ -654,19 +750,19 @@ def test_sensitive_sounding():
     p = units.Quantity([1004., 1000., 943., 928., 925., 850., 839., 749., 700., 699.,
                         603., 500., 404., 400., 363., 306., 300., 250., 213., 200.,
                         176., 150.], 'hectopascal')
-    t = units.Quantity([24.2, 24., 20.2, 21.6, 21.4, 20.4, 20.2, 14.4, 13.2, 13., 6.8, -3.3,
+    t = units.Quantity([25.1, 24.5, 20.2, 21.6, 21.4, 20.4, 20.2, 14.4, 13.2, 13., 6.8, -3.3,
                         -13.1, -13.7, -17.9, -25.5, -26.9, -37.9, -46.7, -48.7, -52.1, -58.9],
                        'degC')
     td = units.Quantity([21.9, 22.1, 19.2, 20.5, 20.4, 18.4, 17.4, 8.4, -2.8, -3.0, -15.2,
                          -20.3, -29.1, -27.7, -24.9, -39.5, -41.9, -51.9, -60.7, -62.7, -65.1,
                          -71.9], 'degC')
     lfc_pressure, lfc_temp = lfc(p, t, td)
-    assert_almost_equal(lfc_pressure, 947.422 * units.mbar, 2)
-    assert_almost_equal(lfc_temp, 20.498 * units.degC, 2)
+    assert_almost_equal(lfc_pressure, 952.8445 * units.mbar, 2)
+    assert_almost_equal(lfc_temp, 20.94469 * units.degC, 2)
 
     pos, neg = surface_based_cape_cin(p, t, td)
-    assert_almost_equal(pos, 0.1115 * units('J/kg'), 3)
-    assert_almost_equal(neg, -6.0866 * units('J/kg'), 3)
+    assert_almost_equal(pos, 0.106791 * units('J/kg'), 3)
+    assert_almost_equal(neg, -282.620677 * units('J/kg'), 3)
 
 
 def test_lfc_sfc_precision():
@@ -760,6 +856,15 @@ def test_equivalent_potential_temperature_masked():
     assert_array_almost_equal(ept, expected, 3)
 
 
+def test_wet_bulb_potential_temperature():
+    """Test wet_bulb potential temperature calculation."""
+    p = 1000 * units.mbar
+    t = 293. * units.kelvin
+    td = 291. * units.kelvin
+    wpt = wet_bulb_potential_temperature(p, t, td)
+    assert_almost_equal(wpt, 291.65839705486565 * units.kelvin, 3)
+
+
 def test_saturation_equivalent_potential_temperature():
     """Test saturation equivalent potential temperature calculation."""
     p = 700 * units.mbar
@@ -790,6 +895,15 @@ def test_virtual_temperature():
     qv = .0016 * units.dimensionless  # kg/kg
     tv = virtual_temperature(t, qv)
     assert_almost_equal(tv, 288.2796 * units.kelvin, 3)
+
+
+def test_virtual_temperature_from_dewpoint():
+    """Test virtual temperature calculation."""
+    p = 1000 * units.hPa
+    t = 30 * units.degC
+    td = 25 * units.degC
+    tv = virtual_temperature_from_dewpoint(p, t, td)
+    assert_almost_equal(tv, 33.6740 * units.degC, 3)
 
 
 def test_virtual_potential_temperature():
@@ -962,6 +1076,27 @@ def test_el_below_lcl():
     assert_nan(el_t, t.units)
 
 
+def test_el_profile_nan():
+    """Test EL when the profile includes NaN values."""
+    levels = np.array([959., 779.2, 751.3, 724.3, 700., 269.]) * units.mbar
+    temperatures = np.array([22.2, 14.6, np.nan, 9.4, 7., -38.]) * units.degC
+    dewpoints = np.array([19., -11.2, -10.8, -10.4, np.nan, -53.2]) * units.degC
+    el_pressure, el_temperature = el(levels, temperatures, dewpoints)
+    assert_almost_equal(el_pressure, 673.0104 * units.mbar, 3)
+    assert_almost_equal(el_temperature, 5.8853 * units.degC, 3)
+
+
+def test_el_profile_nan_with_parcel_profile():
+    """Test EL when the profile includes NaN values, and a parcel temp profile is specified."""
+    levels = np.array([959., 779.2, 751.3, 724.3, 700., 269.]) * units.mbar
+    temperatures = np.array([22.2, 14.6, np.nan, 9.4, 7., -38.]) * units.degC
+    dewpoints = np.array([19., -11.2, -10.8, -10.4, np.nan, -53.2]) * units.degC
+    parcel_temps = parcel_profile(levels, temperatures[0], dewpoints[0]).to('degC')
+    el_pressure, el_temperature = el(levels, temperatures, dewpoints, parcel_temps)
+    assert_almost_equal(el_pressure, 673.0104 * units.mbar, 3)
+    assert_almost_equal(el_temperature, 5.8853 * units.degC, 3)
+
+
 def test_wet_psychrometric_vapor_pressure():
     """Test calculation of vapor pressure from wet and dry bulb temperatures."""
     p = 1013.25 * units.mbar
@@ -1009,7 +1144,7 @@ def test_rh_mixing_ratio():
     temperature = 20. * units.degC
     w = 0.012 * units.dimensionless
     rh = relative_humidity_from_mixing_ratio(p, temperature, w)
-    assert_almost_equal(rh, 81.72498 * units.percent, 3)
+    assert_almost_equal(rh, 82.0709069 * units.percent, 3)
 
 
 def test_mixing_ratio_from_specific_humidity():
@@ -1046,7 +1181,7 @@ def test_rh_specific_humidity():
     temperature = 20. * units.degC
     q = 0.012 * units.dimensionless
     rh = relative_humidity_from_specific_humidity(p, temperature, q)
-    assert_almost_equal(rh, 82.71759 * units.percent, 3)
+    assert_almost_equal(rh, 83.0486264 * units.percent, 3)
 
 
 def test_cape_cin():
@@ -1056,8 +1191,8 @@ def test_cape_cin():
     dewpoint = np.array([19., -11.2, -10.8, -10.4, -10., -53.2]) * units.celsius
     parcel_prof = parcel_profile(p, temperature[0], dewpoint[0])
     cape, cin = cape_cin(p, temperature, dewpoint, parcel_prof)
-    assert_almost_equal(cape, 75.05354 * units('joule / kilogram'), 2)
-    assert_almost_equal(cin, -89.890078 * units('joule / kilogram'), 2)
+    assert_almost_equal(cape, 215.056976 * units('joule / kilogram'), 2)
+    assert_almost_equal(cin, -9.94798721 * units('joule / kilogram'), 2)
 
 
 def test_cape_cin_no_el():
@@ -1067,8 +1202,8 @@ def test_cape_cin_no_el():
     dewpoint = np.array([19., -11.2, -10.8, -10.4]) * units.celsius
     parcel_prof = parcel_profile(p, temperature[0], dewpoint[0]).to('degC')
     cape, cin = cape_cin(p, temperature, dewpoint, parcel_prof)
-    assert_almost_equal(cape, 0.08610409 * units('joule / kilogram'), 2)
-    assert_almost_equal(cin, -89.8900784 * units('joule / kilogram'), 2)
+    assert_almost_equal(cape, 12.74623773 * units('joule / kilogram'), 2)
+    assert_almost_equal(cin, -9.947987213 * units('joule / kilogram'), 2)
 
 
 def test_cape_cin_no_lfc():
@@ -1212,9 +1347,12 @@ def test_isentropic_pressure_p_increase_rh_out():
     assert_almost_equal(isentprs[1], truerh, 3)
 
 
-def test_isentropic_pressure_interp():
+@pytest.mark.parametrize('press_3d', [False, True])
+def test_isentropic_pressure_interp(press_3d):
     """Test calculation of isentropic pressure function."""
     lev = [100000., 95000., 90000., 85000.] * units.Pa
+    if press_3d:
+        lev = np.broadcast_to(lev[:, None, None], (4, 5, 5))
     tmp = np.ones((4, 5, 5))
     tmp[0, :] = 296.
     tmp[1, :] = 292.
@@ -1305,29 +1443,10 @@ def test_isentropic_pressure_4d():
     assert_almost_equal(isentprs[1][:, 1, ], truerh, 3)
 
 
-def test_isentropic_interpolation_dataarray():
-    """Test calculation of isentropic interpolation with xarray dataarrays."""
-    temp = xr.DataArray([[[296.]], [[292.]], [[290.]], [[288.]]] * units.K,
-                        dims=('isobaric', 'y', 'x'),
-                        coords={'isobaric': (('isobaric',), [1000., 950., 900., 850.],
-                                             {'units': 'hPa'}),
-                                'time': '2020-01-01T00:00Z'})
-
-    rh = xr.DataArray([[[100.]], [[80.]], [[40.]], [[20.]]] * units.percent,
-                      dims=('isobaric', 'y', 'x'), coords={
-        'isobaric': (('isobaric',), [1000., 950., 900., 850.], {'units': 'hPa'}),
-        'time': '2020-01-01T00:00Z'})
-
-    isentlev = [296., 297.] * units.kelvin
-    press, rh_interp = isentropic_interpolation(isentlev, temp.isobaric, temp, rh)
-
-    assert_array_almost_equal(press, np.array([[[1000.]], [[936.213]]]) * units.hPa, 3)
-    assert_array_almost_equal(rh_interp, np.array([[[100.]], [[69.19706]]]) * units.percent, 3)
-
-
-def test_isentropic_interpolation_as_dataset():
-    """Test calculation of isentropic interpolation with xarray."""
-    data = xr.Dataset(
+@pytest.fixture
+def xarray_isentropic_data():
+    """Generate test xarray dataset for interpolation functions."""
+    return xr.Dataset(
         {
             'temperature': (
                 ('isobaric', 'y', 'x'),
@@ -1343,8 +1462,105 @@ def test_isentropic_interpolation_as_dataset():
             'time': '2020-01-01T00:00Z'
         }
     )
+
+
+def test_isentropic_interpolation_dataarray(xarray_isentropic_data):
+    """Test calculation of isentropic interpolation with xarray dataarrays."""
+    rh = xarray_isentropic_data.rh
+    temp = xarray_isentropic_data.temperature
+
     isentlev = [296., 297.] * units.kelvin
-    result = isentropic_interpolation_as_dataset(isentlev, data['temperature'], data['rh'])
+    press, rh_interp = isentropic_interpolation(isentlev, temp.isobaric, temp, rh)
+
+    assert_array_almost_equal(press, np.array([[[1000.]], [[936.213]]]) * units.hPa, 3)
+    assert_array_almost_equal(rh_interp, np.array([[[100.]], [[69.19706]]]) * units.percent, 3)
+
+
+def test_isentropic_interpolation_as_dataset(xarray_isentropic_data):
+    """Test calculation of isentropic interpolation with xarray."""
+    isentlev = [296., 297.] * units.kelvin
+    result = isentropic_interpolation_as_dataset(isentlev, xarray_isentropic_data.temperature,
+                                                 xarray_isentropic_data.rh)
+    expected = xr.Dataset(
+        {
+            'pressure': (
+                ('isentropic_level', 'y', 'x'),
+                [[[1000.]], [[936.213]]] * units.hPa,
+                {'standard_name': 'air_pressure'}
+            ),
+            'temperature': (
+                ('isentropic_level', 'y', 'x'),
+                [[[296.]], [[291.4579]]] * units.K,
+                {'standard_name': 'air_temperature'}
+            ),
+            'rh': (
+                ('isentropic_level', 'y', 'x'),
+                [[[100.]], [[69.19706]]] * units.percent
+            )
+        },
+        coords={
+            'isentropic_level': (
+                ('isentropic_level',),
+                [296., 297.],
+                {'units': 'kelvin', 'positive': 'up'}
+            ),
+            'time': '2020-01-01T00:00Z'
+        }
+    )
+    xr.testing.assert_allclose(result, expected)
+    assert result['pressure'].attrs == expected['pressure'].attrs
+    assert result['temperature'].attrs == expected['temperature'].attrs
+    assert result['isentropic_level'].attrs == expected['isentropic_level'].attrs
+
+
+def test_isentropic_interpolation_as_dataset_duplicate(xarray_isentropic_data):
+    """Test duplicate-level check in isentropic_interpolation_as_dataset."""
+    isentlev = [296., 296.] * units.kelvin
+    with pytest.warns(UserWarning):
+        _ = isentropic_interpolation_as_dataset(isentlev, xarray_isentropic_data.temperature,
+                                                xarray_isentropic_data.rh)
+
+
+@pytest.fixture
+def xarray_sigma_isentropic_data():
+    """Generate test xarray dataset on sigma vertical coords for interpolation functions."""
+    return xr.Dataset(
+        {
+            'temperature': (
+                ('z', 'y', 'x'),
+                [[[296.]], [[292.]], [[290.]], [[288.]]] * units.K
+            ),
+            'rh': (
+                ('z', 'y', 'x'),
+                [[[100.]], [[80.]], [[40.]], [[20.]]] * units.percent
+            ),
+            'pressure': (
+                ('z', 'y', 'x'),
+                [[[1000.]], [[950.]], [[900.]], [[850.]]] * units.hPa
+            )
+        },
+        coords={
+            'z': (('z',), [0.98, 0.928, 0.876, 0.825], {'units': 'dimensionless'}),
+            'time': '2020-01-01T00:00Z'
+        }
+    )
+
+
+def test_isen_interpolation_as_dataset_non_pressure_default(xarray_sigma_isentropic_data):
+    """Test isentropic interpolation with xarray data with non-pressure vertical coord."""
+    isentlev = [296., 297.] * units.kelvin
+    with pytest.raises(ValueError, match='vertical coordinate for the.*does not'):
+        isentropic_interpolation_as_dataset(isentlev,
+                                            xarray_sigma_isentropic_data.temperature,
+                                            xarray_sigma_isentropic_data.rh)
+
+
+def test_isen_interpolation_as_dataset_passing_pressre(xarray_sigma_isentropic_data):
+    """Test isentropic interpolation with xarray when passing a pressure array."""
+    isentlev = [296., 297.] * units.kelvin
+    result = isentropic_interpolation_as_dataset(
+        isentlev, xarray_sigma_isentropic_data.temperature,
+        xarray_sigma_isentropic_data.rh, pressure=xarray_sigma_isentropic_data.pressure)
     expected = xr.Dataset(
         {
             'pressure': (
@@ -1384,8 +1600,8 @@ def test_surface_based_cape_cin(array_class):
     temperature = array_class([22.2, 14.6, 12., 9.4, 7., -38.], units.celsius)
     dewpoint = array_class([19., -11.2, -10.8, -10.4, -10., -53.2], units.celsius)
     cape, cin = surface_based_cape_cin(p, temperature, dewpoint)
-    assert_almost_equal(cape, 75.0535446 * units('joule / kilogram'), 2)
-    assert_almost_equal(cin, -136.685967 * units('joule / kilogram'), 2)
+    assert_almost_equal(cape, 215.05697634 * units('joule / kilogram'), 2)
+    assert_almost_equal(cin, -33.0633599455 * units('joule / kilogram'), 2)
 
 
 def test_surface_based_cape_cin_with_xarray():
@@ -1408,8 +1624,8 @@ def test_surface_based_cape_cin_with_xarray():
         data['temperature'],
         data['dewpoint']
     )
-    assert_almost_equal(cape, 75.0535446 * units('joule / kilogram'), 2)
-    assert_almost_equal(cin, -136.685967 * units('joule / kilogram'), 2)
+    assert_almost_equal(cape, 215.056976346 * units('joule / kilogram'), 2)
+    assert_almost_equal(cin, -33.0633599455 * units('joule / kilogram'), 2)
 
 
 def test_profile_with_nans():
@@ -1449,8 +1665,8 @@ def test_most_unstable_cape_cin_surface():
     temperature = np.array([22.2, 14.6, 12., 9.4, 7., -38.]) * units.celsius
     dewpoint = np.array([19., -11.2, -10.8, -10.4, -10., -53.2]) * units.celsius
     mucape, mucin = most_unstable_cape_cin(pressure, temperature, dewpoint)
-    assert_almost_equal(mucape, 75.0535446 * units('joule / kilogram'), 2)
-    assert_almost_equal(mucin, -136.685967 * units('joule / kilogram'), 2)
+    assert_almost_equal(mucape, 215.056976346 * units('joule / kilogram'), 2)
+    assert_almost_equal(mucin, -33.0633599455 * units('joule / kilogram'), 2)
 
 
 def test_most_unstable_cape_cin():
@@ -1459,8 +1675,8 @@ def test_most_unstable_cape_cin():
     temperature = np.array([18.2, 22.2, 17.4, 10., 0., 15]) * units.celsius
     dewpoint = np.array([19., 19., 14.3, 0., -10., 0.]) * units.celsius
     mucape, mucin = most_unstable_cape_cin(pressure, temperature, dewpoint)
-    assert_almost_equal(mucape, 157.11404 * units('joule / kilogram'), 4)
-    assert_almost_equal(mucin, -31.8406578 * units('joule / kilogram'), 4)
+    assert_almost_equal(mucape, 173.749389796 * units('joule / kilogram'), 4)
+    assert_almost_equal(mucin, -20.968278741 * units('joule / kilogram'), 4)
 
 
 def test_mixed_parcel():
@@ -1472,16 +1688,46 @@ def test_mixed_parcel():
                                                                         dewpoint,
                                                                         depth=250 * units.hPa)
     assert_almost_equal(parcel_pressure, 959. * units.hPa, 6)
-    assert_almost_equal(parcel_temperature, 28.7401463 * units.degC, 6)
-    assert_almost_equal(parcel_dewpoint, 7.1534658 * units.degC, 6)
+    assert_almost_equal(parcel_temperature, 28.7401463 * units.degC, 2)
+    assert_almost_equal(parcel_dewpoint, 7.15346585151 * units.degC, 2)
 
 
 def test_mixed_layer_cape_cin(multiple_intersections):
     """Test the calculation of mixed layer cape/cin."""
     pressure, temperature, dewpoint = multiple_intersections
     mlcape, mlcin = mixed_layer_cape_cin(pressure, temperature, dewpoint)
-    assert_almost_equal(mlcape, 987.7323 * units('joule / kilogram'), 2)
-    assert_almost_equal(mlcin, -20.6727628 * units('joule / kilogram'), 2)
+    assert_almost_equal(mlcape, 1132.706800436 * units('joule / kilogram'), 2)
+    assert_almost_equal(mlcin, -13.4809966289 * units('joule / kilogram'), 2)
+
+
+def test_mixed_layer_cape_cin_bottom_pressure(multiple_intersections):
+    """Test the calculation of mixed layer cape/cin with a specified bottom pressure."""
+    pressure, temperature, dewpoint = multiple_intersections
+    mlcape_middle, mlcin_middle = mixed_layer_cape_cin(pressure, temperature, dewpoint,
+                                                       parcel_start_pressure=903 * units.hPa)
+    assert_almost_equal(mlcape_middle, 1177.86 * units('joule / kilogram'), 2)
+    assert_almost_equal(mlcin_middle, -37. * units('joule / kilogram'), 2)
+
+
+def test_dcape():
+    """Test the calculation of DCAPE."""
+    pressure = [1008., 1000., 950., 900., 850., 800., 750., 700., 650., 600.,
+                550., 500., 450., 400., 350., 300., 250., 200.,
+                175., 150., 125., 100., 80., 70., 60., 50.,
+                40., 30., 25., 20.] * units.hPa
+    temperature = [29.3, 28.1, 25.5, 20.9, 18.4, 15.9, 13.1, 10.1, 6.7, 3.1,
+                   -0.5, -4.5, -9.0, -14.8, -21.5, -29.7, -40.0, -52.4,
+                   -59.2, -66.5, -74.1, -78.5, -76.0, -71.6, -66.7, -61.3,
+                   -56.3, -51.7, -50.7, -47.5] * units.degC
+    dewpoint = [26.5, 23.3, 16.1, 6.4, 15.3, 10.9, 8.8, 7.9, 0.6,
+                -16.6, -9.2, -9.9, -14.6, -32.8, -51.2, -32.7, -42.6, -58.9,
+                -69.5, -71.7, -75.9, -79.3, -79.7, -72.5, -73.3, -64.3, -70.6,
+                -75.8, -51.2, -56.4] * units.degC
+    dcape, down_press, down_t = downdraft_cape(pressure, temperature, dewpoint)
+    assert_almost_equal(dcape, 1222 * units('joule / kilogram'), 0)
+    assert_array_almost_equal(down_press, pressure[:10], 0)
+    assert_almost_equal(down_t, [17.5, 17.2, 15.2, 13.1, 10.9, 8.4,
+                                 5.7, 2.7, -0.6, -4.3] * units.degC, 1)
 
 
 def test_mixed_layer():
@@ -1547,21 +1793,21 @@ def test_thickness_hydrostatic_from_relative_humidity():
     relative_humidity = np.array([81.69, 15.43, 18.95, 23.32, 28.36, 18.55]) * units.percent
     thickness = thickness_hydrostatic_from_relative_humidity(pressure, temperature,
                                                              relative_humidity)
-    assert_almost_equal(thickness, 9891.71 * units.m, 2)
+    assert_almost_equal(thickness, 9891.56669 * units.m, 2)
 
 
 def test_mixing_ratio_dimensions():
     """Verify mixing ratio returns a dimensionless number."""
     p = 998. * units.mbar
     e = 73.75 * units.hPa
-    assert str(mixing_ratio(e, p).units) == 'dimensionless'
+    assert mixing_ratio(e, p).units == units('dimensionless')
 
 
 def test_saturation_mixing_ratio_dimensions():
     """Verify saturation mixing ratio returns a dimensionless number."""
     p = 998. * units.mbar
     temp = 20 * units.celsius
-    assert str(saturation_mixing_ratio(p, temp).units) == 'dimensionless'
+    assert saturation_mixing_ratio(p, temp).units == units('dimensionless')
 
 
 def test_mixing_ratio_from_rh_dimensions():
@@ -1569,8 +1815,8 @@ def test_mixing_ratio_from_rh_dimensions():
     p = 1000. * units.mbar
     temperature = 0. * units.degC
     rh = 100. * units.percent
-    assert (str(mixing_ratio_from_relative_humidity(p, temperature, rh).units)
-            == 'dimensionless')
+    assert (mixing_ratio_from_relative_humidity(p, temperature, rh).units
+            == units('dimensionless'))
 
 
 @pytest.fixture
@@ -1733,8 +1979,9 @@ def test_dewpoint_specific_humidity():
     p = 1013.25 * units.mbar
     temperature = 20. * units.degC
     q = 0.012 * units.dimensionless
-    td = dewpoint_from_specific_humidity(p, temperature, q)
-    assert_almost_equal(td, 16.973 * units.degC, 3)
+    with pytest.deprecated_call(match='Temperature argument'):
+        td = dewpoint_from_specific_humidity(p, temperature, q)
+        assert_almost_equal(td, 17.0363429 * units.degC, 3)
 
 
 def test_dewpoint_specific_humidity_old_signature():
@@ -1742,8 +1989,64 @@ def test_dewpoint_specific_humidity_old_signature():
     p = 1013.25 * units.mbar
     temperature = 20. * units.degC
     q = 0.012 * units.dimensionless
-    with pytest.raises(ValueError, match='changed in 1.0'):
+    with (pytest.deprecated_call(match='Temperature argument'),
+          pytest.raises(ValueError, match='changed in version')):
         dewpoint_from_specific_humidity(q, temperature, p)
+
+
+def test_dewpoint_specific_humidity_kwargs():
+    """Test kw-specified signature for backwards compatibility MetPy>=1.6."""
+    p = 1013.25 * units.mbar
+    temperature = 20. * units.degC
+    q = 0.012 * units.dimensionless
+    with pytest.deprecated_call(match='Temperature argument'):
+        td = dewpoint_from_specific_humidity(
+            pressure=p, temperature=temperature, specific_humidity=q)
+        assert_almost_equal(td, 17.036 * units.degC, 3)
+
+
+def test_dewpoint_specific_humidity_three_mixed_args_kwargs():
+    """Test mixed arg, kwarg handling for backwards compatibility MetPy>=1.6."""
+    p = 1013.25 * units.mbar
+    temperature = 20. * units.degC
+    q = 0.012 * units.dimensionless
+    with pytest.deprecated_call(match='Temperature argument'):
+        td = dewpoint_from_specific_humidity(
+            p, temperature, specific_humidity=q)
+        assert_almost_equal(td, 17.036 * units.degC, 3)
+
+
+def test_dewpoint_specific_humidity_two_mixed_args_kwargs():
+    """Test function's internal arg, kwarg processing handles mixed case."""
+    p = 1013.25 * units.mbar
+    q = 0.012 * units.dimensionless
+    td = dewpoint_from_specific_humidity(
+        p, specific_humidity=q)
+    assert_almost_equal(td, 17.036 * units.degC, 3)
+
+
+def test_dewpoint_specific_humidity_two_args():
+    """Test new signature, Temperature unneeded, MetPy>=1.6."""
+    p = 1013.25 * units.mbar
+    q = 0.012 * units.dimensionless
+    td = dewpoint_from_specific_humidity(p, q)
+    assert_almost_equal(td, 17.036 * units.degC, 3)
+
+
+def test_dewpoint_specific_humidity_arrays():
+    """Test function arg handling can process arrays."""
+    p = 1013.25 * units.mbar
+    q = np.tile(0.012 * units.dimensionless, (3, 2))
+    td = dewpoint_from_specific_humidity(p, specific_humidity=q)
+    assert_almost_equal(td, np.tile(17.036 * units.degC, (3, 2)), 3)
+
+
+def test_dewpoint_specific_humidity_xarray(index_xarray_data):
+    """Test function arg handling processes xarray inputs."""
+    p = index_xarray_data.isobaric
+    q = specific_humidity_from_dewpoint(p, index_xarray_data.dewpoint)
+    td = dewpoint_from_specific_humidity(p, specific_humidity=q)
+    assert_array_almost_equal(td, index_xarray_data.dewpoint)
 
 
 def test_lfc_not_below_lcl():
@@ -1796,10 +2099,10 @@ def test_multiple_lfcs_simple(multiple_intersections):
     lfc_pressure_bottom, lfc_temp_bottom = lfc(levels, temperatures, dewpoints,
                                                which='bottom')
     lfc_pressure_all, _ = lfc(levels, temperatures, dewpoints, which='all')
-    assert_almost_equal(lfc_pressure_top, 705.3534595 * units.mbar, 3)
-    assert_almost_equal(lfc_temp_top, 4.8848999 * units.degC, 3)
-    assert_almost_equal(lfc_pressure_bottom, 884.14790 * units.mbar, 3)
-    assert_almost_equal(lfc_temp_bottom, 13.95707016 * units.degC, 3)
+    assert_almost_equal(lfc_pressure_top, 705.3534497 * units.mbar, 3)
+    assert_almost_equal(lfc_temp_top, 4.884899 * units.degC, 3)
+    assert_almost_equal(lfc_pressure_bottom, 884.1478935 * units.mbar, 3)
+    assert_almost_equal(lfc_temp_bottom, 13.95706975 * units.degC, 3)
     assert_almost_equal(len(lfc_pressure_all), 2, 0)
 
 
@@ -1807,8 +2110,8 @@ def test_multiple_lfs_wide(multiple_intersections):
     """Test 'wide' LFC for sounding with multiple LFCs."""
     levels, temperatures, dewpoints = multiple_intersections
     lfc_pressure_wide, lfc_temp_wide = lfc(levels, temperatures, dewpoints, which='wide')
-    assert_almost_equal(lfc_pressure_wide, 705.3534595 * units.hPa, 3)
-    assert_almost_equal(lfc_temp_wide, 4.8848999 * units.degC, 3)
+    assert_almost_equal(lfc_pressure_wide, 705.3534497 * units.hPa, 3)
+    assert_almost_equal(lfc_temp_wide, 4.88489902 * units.degC, 3)
 
 
 def test_invalid_which(multiple_intersections):
@@ -1832,10 +2135,10 @@ def test_multiple_els_simple(multiple_intersections):
     el_pressure_top, el_temp_top = el(levels, temperatures, dewpoints)
     el_pressure_bottom, el_temp_bottom = el(levels, temperatures, dewpoints, which='bottom')
     el_pressure_all, _ = el(levels, temperatures, dewpoints, which='all')
-    assert_almost_equal(el_pressure_top, 228.151466 * units.mbar, 3)
-    assert_almost_equal(el_temp_top, -56.81015490 * units.degC, 3)
-    assert_almost_equal(el_pressure_bottom, 849.7998947 * units.mbar, 3)
-    assert_almost_equal(el_temp_bottom, 12.4233265 * units.degC, 3)
+    assert_almost_equal(el_pressure_top, 228.151524 * units.mbar, 3)
+    assert_almost_equal(el_temp_top, -56.810153566 * units.degC, 3)
+    assert_almost_equal(el_pressure_bottom, 849.7998957 * units.mbar, 3)
+    assert_almost_equal(el_temp_bottom, 12.42268288 * units.degC, 3)
     assert_almost_equal(len(el_pressure_all), 2, 0)
 
 
@@ -1843,24 +2146,24 @@ def test_multiple_el_wide(multiple_intersections):
     """Test 'wide' EL for sounding with multiple ELs."""
     levels, temperatures, dewpoints = multiple_intersections
     el_pressure_wide, el_temp_wide = el(levels, temperatures, dewpoints, which='wide')
-    assert_almost_equal(el_pressure_wide, 228.151466 * units.hPa, 3)
-    assert_almost_equal(el_temp_wide, -56.81015490 * units.degC, 3)
+    assert_almost_equal(el_pressure_wide, 228.151524 * units.hPa, 3)
+    assert_almost_equal(el_temp_wide, -56.81015357 * units.degC, 3)
 
 
 def test_muliple_el_most_cape(multiple_intersections):
     """Test 'most_cape' EL for sounding with multiple ELs."""
     levels, temperatures, dewpoints = multiple_intersections
     el_pressure_wide, el_temp_wide = el(levels, temperatures, dewpoints, which='most_cape')
-    assert_almost_equal(el_pressure_wide, 228.151466 * units.hPa, 3)
-    assert_almost_equal(el_temp_wide, -56.81015490 * units.degC, 3)
+    assert_almost_equal(el_pressure_wide, 228.151524 * units.hPa, 3)
+    assert_almost_equal(el_temp_wide, -56.81015356 * units.degC, 3)
 
 
 def test_muliple_lfc_most_cape(multiple_intersections):
     """Test 'most_cape' LFC for sounding with multiple LFCs."""
     levels, temperatures, dewpoints = multiple_intersections
     lfc_pressure_wide, lfc_temp_wide = lfc(levels, temperatures, dewpoints, which='most_cape')
-    assert_almost_equal(lfc_pressure_wide, 705.3534595 * units.hPa, 3)
-    assert_almost_equal(lfc_temp_wide, 4.8848999 * units.degC, 3)
+    assert_almost_equal(lfc_pressure_wide, 705.35344968 * units.hPa, 3)
+    assert_almost_equal(lfc_temp_wide, 4.88489902 * units.degC, 3)
 
 
 def test_el_lfc_most_cape_bottom():
@@ -1873,10 +2176,10 @@ def test_el_lfc_most_cape_bottom():
                           -6.9, -9.5, -12., -14.6, -15.8]) * units.degC
     lfc_pressure, lfc_temp = lfc(levels, temperatures, dewpoints, which='most_cape')
     el_pressure, el_temp = el(levels, temperatures, dewpoints, which='most_cape')
-    assert_almost_equal(lfc_pressure, 900.73235 * units.hPa, 3)
-    assert_almost_equal(lfc_temp, 14.672512 * units.degC, 3)
-    assert_almost_equal(el_pressure, 849.7998947 * units.hPa, 3)
-    assert_almost_equal(el_temp, 12.4233265 * units.degC, 3)
+    assert_almost_equal(lfc_pressure, 714.358842 * units.hPa, 3)
+    assert_almost_equal(lfc_temp, 5.415421178 * units.degC, 3)
+    assert_almost_equal(el_pressure, 658.61917328 * units.hPa, 3)
+    assert_almost_equal(el_temp, 1.951095056 * units.degC, 3)
 
 
 def test_cape_cin_top_el_lfc(multiple_intersections):
@@ -1884,8 +2187,8 @@ def test_cape_cin_top_el_lfc(multiple_intersections):
     levels, temperatures, dewpoints = multiple_intersections
     parcel_prof = parcel_profile(levels, temperatures[0], dewpoints[0]).to('degC')
     cape, cin = cape_cin(levels, temperatures, dewpoints, parcel_prof, which_lfc='top')
-    assert_almost_equal(cape, 1258.94592 * units('joule / kilogram'), 3)
-    assert_almost_equal(cin, -97.752333 * units('joule / kilogram'), 3)
+    assert_almost_equal(cape, 1345.18884959 * units('joule / kilogram'), 3)
+    assert_almost_equal(cin, -35.179268355 * units('joule / kilogram'), 3)
 
 
 def test_cape_cin_bottom_el_lfc(multiple_intersections):
@@ -1893,8 +2196,8 @@ def test_cape_cin_bottom_el_lfc(multiple_intersections):
     levels, temperatures, dewpoints = multiple_intersections
     parcel_prof = parcel_profile(levels, temperatures[0], dewpoints[0]).to('degC')
     cape, cin = cape_cin(levels, temperatures, dewpoints, parcel_prof, which_el='bottom')
-    assert_almost_equal(cape, 2.18798 * units('joule / kilogram'), 3)
-    assert_almost_equal(cin, -8.16221 * units('joule / kilogram'), 3)
+    assert_almost_equal(cape, 4.57262449 * units('joule / kilogram'), 3)
+    assert_almost_equal(cin, -5.9471237534 * units('joule / kilogram'), 3)
 
 
 def test_cape_cin_wide_el_lfc(multiple_intersections):
@@ -1903,8 +2206,8 @@ def test_cape_cin_wide_el_lfc(multiple_intersections):
     parcel_prof = parcel_profile(levels, temperatures[0], dewpoints[0]).to('degC')
     cape, cin = cape_cin(levels, temperatures, dewpoints, parcel_prof, which_lfc='wide',
                          which_el='wide')
-    assert_almost_equal(cape, 1258.9459 * units('joule / kilogram'), 3)
-    assert_almost_equal(cin, -97.752333 * units('joule / kilogram'), 3)
+    assert_almost_equal(cape, 1345.1888496 * units('joule / kilogram'), 3)
+    assert_almost_equal(cin, -35.179268355 * units('joule / kilogram'), 3)
 
 
 def test_cape_cin_custom_profile():
@@ -1914,7 +2217,7 @@ def test_cape_cin_custom_profile():
     dewpoint = np.array([19., -11.2, -10.8, -10.4, -10., -53.2]) * units.celsius
     parcel_prof = parcel_profile(p, temperature[0], dewpoint[0]) + 5 * units.delta_degC
     cape, cin = cape_cin(p, temperature, dewpoint, parcel_prof)
-    assert_almost_equal(cape, 1440.463208696 * units('joule / kilogram'), 2)
+    assert_almost_equal(cape, 1650.61208729 * units('joule / kilogram'), 2)
     assert_almost_equal(cin, 0.0 * units('joule / kilogram'), 2)
 
 
@@ -1970,6 +2273,14 @@ def test_specific_humidity_from_dewpoint():
     assert_almost_equal(q, 0.012 * units.dimensionless, 3)
 
 
+def test_specific_humidity_from_dewpoint_versionchanged():
+    """Test returning singular version changed suggestion in ValueError."""
+    pressure = 1013.25 * units.mbar
+    dewpoint = 16.973 * units.degC
+    with pytest.raises(ValueError, match='changed in version'):
+        specific_humidity_from_dewpoint(dewpoint, pressure)
+
+
 def test_lcl_convergence_issue():
     """Test profile where LCL wouldn't converge (#1187)."""
     pressure = np.array([990, 973, 931, 925, 905]) * units.hPa
@@ -2000,7 +2311,7 @@ def test_cape_cin_value_error():
                          -35.9, -26.7, -37.7, -43.1, -33.9, -40.9, -46.1, -34.9, -33.9,
                          -33.7, -33.3, -42.5, -50.3, -49.7, -49.5, -58.3, -61.3]) * units.degC
     cape, cin = surface_based_cape_cin(pressure, temperature, dewpoint)
-    expected_cape, expected_cin = 2007.040698 * units('joules/kg'), 0.0 * units('joules/kg')
+    expected_cape, expected_cin = 2098.688061 * units('joules/kg'), 0.0 * units('joules/kg')
     assert_almost_equal(cape, expected_cape, 3)
     assert_almost_equal(cin, expected_cin, 3)
 
@@ -2051,6 +2362,50 @@ def index_xarray_data():
                       coords={'isobaric': pressure, 'time': ['2020-01-01T00:00Z']})
 
 
+@pytest.fixture()
+def index_xarray_data_expanded():
+    """Create expanded data for testing that index calculations work with xarray data.
+
+    Specifically for Galvez Davison Index calculation, which requires 950hPa pressure
+    """
+    pressure = xr.DataArray(
+        [950., 850., 700., 500.], dims=('isobaric',), attrs={'units': 'hPa'}
+    )
+    temp = xr.DataArray([[[[306., 305., 304.], [303., 302., 301.]],
+                          [[296., 295., 294.], [293., 292., 291.]],
+                          [[286., 285., 284.], [283., 282., 281.]],
+                          [[276., 275., 274.], [273., 272., 271.]]]] * units.K,
+                        dims=('time', 'isobaric', 'y', 'x'))
+
+    profile = xr.DataArray([[[[299., 298., 297.], [296., 295., 294.]],
+                             [[289., 288., 287.], [286., 285., 284.]],
+                             [[279., 278., 277.], [276., 275., 274.]],
+                             [[269., 268., 267.], [266., 265., 264.]]]] * units.K,
+                           dims=('time', 'isobaric', 'y', 'x'))
+
+    dewp = xr.DataArray([[[[304., 303., 302.], [301., 300., 299.]],
+                          [[294., 293., 292.], [291., 290., 289.]],
+                          [[284., 283., 282.], [281., 280., 279.]],
+                          [[274., 273., 272.], [271., 270., 269.]]]] * units.K,
+                        dims=('time', 'isobaric', 'y', 'x'))
+
+    dirw = xr.DataArray([[[[135., 135., 135.], [135., 135., 135.]],
+                          [[180., 180., 180.], [180., 180., 180.]],
+                          [[225., 225., 225.], [225., 225., 225.]],
+                          [[270., 270., 270.], [270., 270., 270.]]]] * units.degree,
+                        dims=('time', 'isobaric', 'y', 'x'))
+
+    speed = xr.DataArray([[[[15., 15., 15.], [15., 15., 15.]],
+                           [[20., 20., 20.], [20., 20., 20.]],
+                           [[25., 25., 25.], [25., 25., 25.]],
+                           [[50., 50., 50.], [50., 50., 50.]]]] * units.knots,
+                         dims=('time', 'isobaric', 'y', 'x'))
+
+    return xr.Dataset({'temperature': temp, 'profile': profile, 'dewpoint': dewp,
+                       'wind_direction': dirw, 'wind_speed': speed},
+                      coords={'isobaric': pressure, 'time': ['2023-01-01T00:00Z']})
+
+
 def test_lifted_index():
     """Test the Lifted Index calculation."""
     pressure = np.array([1014., 1000., 997., 981.2, 947.4, 925., 914.9, 911.,
@@ -2073,7 +2428,7 @@ def test_lifted_index():
                          -57.5]) * units.degC
     parcel_prof = parcel_profile(pressure, temperature[0], dewpoint[0])
     li = lifted_index(pressure, temperature, parcel_prof)
-    assert_almost_equal(li, -7.9176350 * units.delta_degree_Celsius, 2)
+    assert_almost_equal(li, -7.9115691 * units.delta_degree_Celsius, 2)
 
 
 def test_lifted_index_500hpa_missing():
@@ -2098,7 +2453,7 @@ def test_lifted_index_500hpa_missing():
                          -57.5]) * units.degC
     parcel_prof = parcel_profile(pressure, temperature[0], dewpoint[0])
     li = lifted_index(pressure, temperature, parcel_prof)
-    assert_almost_equal(li, -7.9176350 * units.delta_degree_Celsius, 1)
+    assert_almost_equal(li, -7.9806301 * units.delta_degree_Celsius, 1)
 
 
 def test_lifted_index_xarray(index_xarray_data):
@@ -2138,6 +2493,127 @@ def test_k_index_xarray(index_xarray_data):
                      index_xarray_data.dewpoint)
     assert_array_almost_equal(result,
                               np.array([[[312., 311., 310.], [309., 308., 307.]]]) * units.K)
+
+
+def test_gdi():
+    """Test the Galvez Davison Index calculation."""
+    pressure = np.array([1014., 1000., 997., 981.2, 947.4, 925., 914.9, 911.,
+                         902., 883., 850., 822.3, 816., 807., 793.2, 770.,
+                         765.1, 753., 737.5, 737., 713., 700., 688., 685.,
+                         680., 666., 659.8, 653., 643., 634., 615., 611.8,
+                         566.2, 516., 500., 487., 484.2, 481., 475., 460.,
+                         400.]) * units.hPa
+    temperature = np.array([24.2, 24.2, 24., 23.1, 21., 19.6, 18.7, 18.4,
+                            19.2, 19.4, 17.2, 15.3, 14.8, 14.4, 13.4, 11.6,
+                            11.1, 10., 8.8, 8.8, 8.2, 7., 5.6, 5.6,
+                            5.6, 4.4, 3.8, 3.2, 3., 3.2, 1.8, 1.5,
+                            -3.4, -9.3, -11.3, -13.1, -13.1, -13.1, -13.7, -15.1,
+                            -23.5]) * units.degC
+    dewpoint = np.array([23.2, 23.1, 22.8, 22., 20.2, 19., 17.6, 17.,
+                         16.8, 15.5, 14., 11.7, 11.2, 8.4, 7., 4.6,
+                         5., 6., 4.2, 4.1, -1.8, -2., -1.4, -0.4,
+                         -3.4, -5.6, -4.3, -2.8, -7., -25.8, -31.2, -31.4,
+                         -34.1, -37.3, -32.3, -34.1, -37.3, -41.1, -37.7, -58.1,
+                         -57.5]) * units.degC
+
+    relative_humidity = relative_humidity_from_dewpoint(temperature, dewpoint)
+    mixrat = mixing_ratio_from_relative_humidity(pressure, temperature, relative_humidity)
+    gdi = galvez_davison_index(pressure, temperature, mixrat, pressure[0])
+
+    # Compare with value from hand calculation
+    assert_almost_equal(gdi, 6.635, decimal=1)
+
+
+def test_gdi_xarray(index_xarray_data_expanded):
+    """Test the GDI calculation with a grid of xarray data."""
+    pressure = index_xarray_data_expanded.isobaric
+    temperature = index_xarray_data_expanded.temperature
+    dewpoint = index_xarray_data_expanded.dewpoint
+    mixing_ratio = mixing_ratio_from_relative_humidity(
+        pressure, temperature, relative_humidity_from_dewpoint(temperature, dewpoint))
+
+    result = galvez_davison_index(
+        pressure,
+        temperature,
+        mixing_ratio,
+        pressure[0]
+    )
+
+    assert_array_almost_equal(
+        result,
+        np.array([[[189.5890429, 157.4307982, 129.9739099],
+                   [106.6763526, 87.0637477, 70.7202505]]])
+    )
+
+
+def test_gdi_arrays(index_xarray_data_expanded):
+    """Test GDI on 3-D Quantity arrays with an array of surface pressure."""
+    ds = index_xarray_data_expanded.isel(time=0).squeeze()
+    pressure = ds.isobaric.metpy.unit_array[:, None, None]
+    temperature = ds.temperature.metpy.unit_array
+    dewpoint = ds.dewpoint.metpy.unit_array
+    mixing_ratio = mixing_ratio_from_relative_humidity(
+        pressure, temperature, relative_humidity_from_dewpoint(temperature, dewpoint))
+    surface_pressure = units.Quantity(
+        np.broadcast_to(pressure.m, temperature.shape), pressure.units)[0]
+
+    result = galvez_davison_index(pressure, temperature, mixing_ratio, surface_pressure)
+
+    assert_array_almost_equal(
+        result,
+        np.array([[189.5890429, 157.4307982, 129.9739099],
+                  [106.6763526, 87.0637477, 70.7202505]])
+    )
+
+
+def test_gdi_profile(index_xarray_data_expanded):
+    """Test GDI calculation on an individual profile."""
+    ds = index_xarray_data_expanded.isel(time=0, y=0, x=0)
+    pressure = ds.isobaric.metpy.unit_array
+    temperature = ds.temperature.metpy.unit_array
+    dewpoint = ds.dewpoint.metpy.unit_array
+    mixing_ratio = mixing_ratio_from_relative_humidity(
+        pressure, temperature, relative_humidity_from_dewpoint(temperature, dewpoint))
+
+    assert_almost_equal(galvez_davison_index(pressure, temperature, mixing_ratio, pressure[0]),
+                        189.5890429, 4)
+
+
+def test_gdi_no_950_raises_valueerror(index_xarray_data):
+    """GDI requires a 950hPa or higher measurement.
+
+    Ensure error is raised if this data is not provided.
+    """
+    with pytest.raises(ValueError):
+        pressure = index_xarray_data.isobaric
+        temperature = index_xarray_data.temperature
+        dewpoint = index_xarray_data.dewpoint
+        relative_humidity = relative_humidity_from_dewpoint(temperature, dewpoint)
+        mixrat = mixing_ratio_from_relative_humidity(pressure, temperature, relative_humidity)
+        galvez_davison_index(
+            pressure,
+            temperature,
+            mixrat,
+            pressure[0]
+        )
+
+
+def test_gdi_no_950_by_simplevalue():
+    """GDI requires a 950hPa or higher measurement."""
+    with pytest.raises(ValueError):
+        pressure = np.array([922., 850., 700., 600., 500., 400., 300., 250.,
+                             200., 150.]) * units.hPa
+        temperature = np.array([22.6, 18.6, 8.6, 2.8, -4.6, -15.5, -30.6, -40.4,
+                                -52.9, -67.8]) * units.degC
+        relative_humidity = np.array([71.12, 71.16, 70.79, 50.33, 28.22, 4.80, 3.68, 5.82,
+                                      18.18, 27.33]) * units.percent
+        mixrat = mixing_ratio_from_relative_humidity(pressure, temperature, relative_humidity)
+        galvez_davison_index(
+            pressure,
+            temperature,
+            mixrat,
+            pressure[0]
+        )
 
 
 def test_gradient_richardson_number():
@@ -2346,7 +2822,8 @@ def test_parcel_profile_with_lcl_as_dataset_duplicates():
         }
     )
 
-    profile = parcel_profile_with_lcl_as_dataset(pressure, temperature, dewpoint)
+    with pytest.warns(UserWarning, match='Duplicate pressure'):
+        profile = parcel_profile_with_lcl_as_dataset(pressure, temperature, dewpoint)
 
     xr.testing.assert_allclose(profile, truth, atol=1e-5)
 

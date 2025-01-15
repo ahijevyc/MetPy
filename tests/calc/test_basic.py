@@ -104,7 +104,7 @@ def test_direction_with_north_and_calm(array_type):
 def test_direction_dimensions():
     """Verify wind_direction returns degrees."""
     d = wind_direction(3. * units('m/s'), 4. * units('m/s'))
-    assert str(d.units) == 'degree'
+    assert d.units == units('degree')
 
 
 def test_oceanographic_direction(array_type):
@@ -246,11 +246,12 @@ def test_heat_index_undefined_flag():
 
 
 def test_heat_index_units():
-    """Test units coming out of heat index."""
+    """Test units coming out of heat index are unchanged."""
     temp = units.Quantity([35., 20.], units.degC)
     rh = 70 * units.percent
     hi = heat_index(temp, rh)
-    assert_almost_equal(hi.to('degC'), units.Quantity([50.3405, np.nan], units.degC), 4)
+    assert hi.units == temp.units
+    assert_almost_equal(hi, units.Quantity([50.3405, np.nan], units.degC), 4)
 
 
 def test_heat_index_ratio():
@@ -258,7 +259,7 @@ def test_heat_index_ratio():
     temp = units.Quantity([35., 20.], units.degC)
     rh = 0.7
     hi = heat_index(temp, rh)
-    assert_almost_equal(hi.to('degC'), units.Quantity([50.3405, np.nan], units.degC), 4)
+    assert_almost_equal(hi, units.Quantity([50.3405, np.nan], units.degC), 4)
 
 
 def test_heat_index_vs_nws():
@@ -278,7 +279,7 @@ def test_heat_index_kelvin():
     rh = 0.7
     hi = heat_index(temp, rh)
     # NB rounded up test value here vs the above two tests
-    assert_almost_equal(hi.to('degC'), 50.3406 * units.degC, 4)
+    assert_almost_equal(hi, 50.3406 * units.degC, 4)
 
 
 def test_height_to_geopotential(array_type):
@@ -708,14 +709,14 @@ def test_smooth_window_1d_dataarray():
     temperature = xr.DataArray(
         [37., 32., 34., 29., 28., 24., 26., 24., 27., 30.],
         dims=('time',),
-        coords={'time': pd.date_range('2020-01-01', periods=10, freq='H')},
+        coords={'time': pd.date_range('2020-01-01', periods=10, freq='h')},
         attrs={'units': 'degF'})
     smoothed = smooth_window(temperature, window=np.ones(3) / 3, normalize_weights=False)
     truth = xr.DataArray(
         [37., 34.33333333, 31.66666667, 30.33333333, 27., 26., 24.66666667,
          25.66666667, 27., 30.] * units.degF,
         dims=('time',),
-        coords={'time': pd.date_range('2020-01-01', periods=10, freq='H')}
+        coords={'time': pd.date_range('2020-01-01', periods=10, freq='h')}
     )
     xr.testing.assert_allclose(smoothed, truth)
 
@@ -799,6 +800,7 @@ def test_altimiter_to_sea_level_pressure_inhg():
     assert_almost_equal(res, truth, 3)
 
 
+@pytest.mark.filterwarnings('ignore:overflow encountered in exp:RuntimeWarning')
 def test_altimeter_to_sea_level_pressure_hpa(array_type):
     """Test the altimeter to sea level pressure function with hectopascals."""
     mask = [False, True, False, True]

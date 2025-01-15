@@ -7,24 +7,34 @@ inputs:
   python-version:
     description: 'What version of Python to use'
     required: true
+  need-cartopy:
+    description: 'Whether Cartopy support is needed'
+    required: false
+    default: 'false'
+
 runs:
   using: composite
   steps:
     - name: Set up Python ${{ inputs.python-version }}
-      uses: mamba-org/provision-with-micromamba@v15
+      uses: mamba-org/setup-micromamba@v2
       with:
-        environment-file: false
+        micromamba-version: 2.0.2-2
+        # Name is needed for caching
         environment-name: CI
-        extra-specs: python=${{ inputs.python-version }}
-        channels: conda-forge/label/testing,conda-forge
-        cache-env: true
-        cache-env-key: mamba-${{ inputs.type }}-${{ runner.os }}-${{ inputs.python-version}}-${{ hashFiles('ci/*') }}
+        create-args: python=${{ inputs.python-version }}
+        condarc: |
+          channels:
+            - conda-forge/label/testing
+            - conda-forge
+        cache-environment: true
+        cache-environment-key: mamba-${{ inputs.type }}-${{ runner.os }}-${{ inputs.python-version}}-${{ hashFiles('ci/*') }}
 
     - name: Install dependencies
       shell: bash -l {0}
-      run: micromamba install --quiet --yes --file ci/${{ inputs.type }}_requirements.txt --file ci/extra_requirements.txt --file ci/requirements.txt
+      run: micromamba install --yes --file ci/${{ inputs.type }}_requirements.txt --file ci/extra_requirements.txt --file ci/requirements.txt
 
     - name: Download Cartopy Maps
+      if: ${{ inputs.need-cartopy == 'true' }}
       shell: bash -l {0}
       run: ci/download_cartopy_maps.py
 

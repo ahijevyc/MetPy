@@ -72,8 +72,15 @@ def test_level2_fobj(filename, use_seek):
                 """Read bytes."""
                 return self._f.read(n)
 
+            def close(self):
+                """Close object."""
+                return self._f.close()
+
         f = SeeklessReader(f)
-    Level2File(f)
+
+    # Need to close manually (since we own the fboj) to avoid a warning
+    with contextlib.closing(f):
+        Level2File(f)
 
 
 def test_doubled_file():
@@ -100,6 +107,12 @@ def test_msg15():
     data = f.clutter_filter_map['data']
     assert isinstance(data[0][0], list)
     assert f.clutter_filter_map['datetime'] == datetime(2013, 5, 19, 5, 15, 0, 0)
+
+
+def test_msg18_novcps():
+    """Check handling of message type 18 with VCP info now spares does not crash."""
+    f = Level2File(get_test_data('KJKL_20240227_102059', as_file_obj=False))
+    assert 'VCPAT11' not in f.rda
 
 
 def test_single_chunk(caplog):

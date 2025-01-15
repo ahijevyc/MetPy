@@ -52,6 +52,13 @@ def wind_speed(u, v):
     --------
     wind_components
 
+    Examples
+    --------
+    >>> from metpy.calc import wind_speed
+    >>> from metpy.units import units
+    >>> wind_speed(10. * units('m/s'), 10. * units('m/s'))
+    <Quantity(14.1421356, 'meter / second')>
+
     """
     return np.hypot(u, v)
 
@@ -88,12 +95,19 @@ def wind_direction(u, v, convention='from'):
     In the case of calm winds (where `u` and `v` are zero), this function returns a direction
     of 0.
 
+    Examples
+    --------
+    >>> from metpy.calc import wind_direction
+    >>> from metpy.units import units
+    >>> wind_direction(10. * units('m/s'), 10. * units('m/s'))
+    <Quantity(225.0, 'degree')>
+
     """
     wdir = units.Quantity(90., 'deg') - np.arctan2(-v, -u)
     origshape = wdir.shape
     wdir = np.atleast_1d(wdir)
 
-    # Handle oceanographic convection
+    # Handle oceanographic convention
     if convention == 'to':
         wdir -= units.Quantity(180., 'deg')
     elif convention not in ('to', 'from'):
@@ -141,7 +155,7 @@ def wind_components(speed, wind_direction):
     >>> from metpy.calc import wind_components
     >>> from metpy.units import units
     >>> wind_components(10. * units('m/s'), 225. * units.deg)
-     (<Quantity(7.07106781, 'meter / second')>, <Quantity(7.07106781, 'meter / second')>)
+    (<Quantity(7.07106781, 'meter / second')>, <Quantity(7.07106781, 'meter / second')>)
 
     .. versionchanged:: 1.0
        Renamed ``wdir`` parameter to ``wind_direction``
@@ -246,6 +260,18 @@ def heat_index(temperature, relative_humidity, mask_undefined=True):
         A flag indicating whether a masked array should be returned with
         values masked where the temperature < 80F. Defaults to `True`.
 
+    Examples
+    --------
+    >>> from metpy.calc import heat_index
+    >>> from metpy.units import units
+    >>> heat_index(30 * units.degC, 90 * units.percent)
+    <Quantity([40.774647], 'degree_Celsius')>
+    >>> heat_index(90 * units.degF, 90 * units.percent)
+    <Quantity([121.901204], 'degree_Fahrenheit')>
+    >>> heat_index(60 * units.degF, 90 * units.percent)
+    <Quantity([--], 'degree_Fahrenheit')>
+    >>> heat_index(60 * units.degF, 90 * units.percent, mask_undefined=False)
+    <Quantity([59.93], 'degree_Fahrenheit')>
 
     .. versionchanged:: 1.0
        Renamed ``rh`` parameter to ``relative_humidity``
@@ -326,7 +352,7 @@ def heat_index(temperature, relative_humidity, mask_undefined=True):
         if mask.any():
             hi = masked_array(hi, mask=mask)
 
-    return hi
+    return hi.to(temperature.units)
 
 
 @exporter.export
@@ -393,8 +419,8 @@ def apparent_temperature(temperature, relative_humidity, speed, face_level_winds
     # NB: older numpy.ma.where does not return a masked array
     app_temperature = masked_array(
         np.ma.where(masked_array(wind_chill_temperature).mask,
-                    heat_index_temperature.to(temperature.units),
-                    wind_chill_temperature.to(temperature.units)
+                    heat_index_temperature.m_as(temperature.units),
+                    wind_chill_temperature.m_as(temperature.units)
                     ), temperature.units)
 
     # If mask_undefined is False, then set any masked values to the temperature
@@ -527,16 +553,10 @@ def geopotential_to_height(geopotential):
     --------
     >>> import metpy.calc
     >>> from metpy.units import units
-    >>> height = np.linspace(0, 10000, num=11) * units.m
-    >>> geopot = metpy.calc.height_to_geopotential(height)
-    >>> geopot
-    <Quantity([     0.           9805.11097983 19607.1448853  29406.10316465
-    39201.98726524 48994.79863351 58784.53871501 68571.20895435
-    78354.81079527 88135.34568058 97912.81505219], 'meter ** 2 / second ** 2')>
+    >>> geopot = units.Quantity([0., 9805., 19607., 29406.], 'm^2/s^2')
     >>> height = metpy.calc.geopotential_to_height(geopot)
     >>> height
-    <Quantity([     0.   1000.   2000.   3000.   4000.   5000.   6000.   7000.   8000.
-    9000.  10000.], 'meter')>
+    <Quantity([   0.          999.98867965 1999.98521653 2999.98947022], 'meter')>
 
     See Also
     --------
@@ -823,6 +843,9 @@ def smooth_gaussian(scalar_grid, n):
     num_ax = len(scalar_grid.shape)
     # Assume the last two axes represent the horizontal directions
     sgma_seq = [sgma if i > num_ax - 3 else 0 for i in range(num_ax)]
+    # Drop units as necessary to avoid warnings from scipy doing so--units will be reattached
+    # if necessary by wrapper
+    scalar_grid = getattr(scalar_grid, 'magnitude', scalar_grid)
 
     filter_args = {'sigma': sgma_seq, 'truncate': 2 * np.sqrt(2)}
     if hasattr(scalar_grid, 'mask'):
@@ -897,10 +920,7 @@ def smooth_window(scalar_grid, window, passes=1, normalize_weights=True):
         raise ValueError('The shape of the smoothing window must be odd in all dimensions.')
 
     # Optionally normalize the supplied weighting window
-    if normalize_weights:
-        weights = window / np.sum(window)
-    else:
-        weights = window
+    weights = window / np.sum(window) if normalize_weights else window
 
     # Set indexes
     # Inner index for the centered array elements that are affected by the smoothing
@@ -1098,6 +1118,8 @@ def zoom_xarray(input_field, zoom, output=None, order=3, mode='constant', cval=0
         available.
 
     """
+    # Dequantify input to avoid warnings and make sure units propagate
+    input_field = input_field.metpy.dequantify()
     # Zoom data
     zoomed_data = scipy_zoom(
         input_field.data, zoom, output=output, order=order, mode=mode, cval=cval,
@@ -1108,7 +1130,7 @@ def zoom_xarray(input_field, zoom, output=None, order=3, mode='constant', cval=0
     if not np.iterable(zoom):
         zoom = tuple(zoom for _ in input_field.dims)
     zoomed_dim_coords = {}
-    for dim_name, dim_zoom in zip(input_field.dims, zoom):
+    for dim_name, dim_zoom in zip(input_field.dims, zoom, strict=False):
         if dim_name in input_field.coords:
             zoomed_dim_coords[dim_name] = scipy_zoom(
                 input_field[dim_name].data, dim_zoom, order=order, mode=mode, cval=cval,

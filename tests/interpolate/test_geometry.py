@@ -27,7 +27,7 @@ def test_get_points_within_r():
 
     radius = 5
 
-    matches = get_points_within_r(center, list(zip(x, y)), radius).T
+    matches = get_points_within_r(center, list(zip(x, y, strict=False)), radius).T
 
     truth = [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]
 
@@ -44,7 +44,7 @@ def test_get_point_count_within_r():
 
     radius = 5
 
-    count = get_point_count_within_r([center1, center2], list(zip(x, y)), radius)
+    count = get_point_count_within_r([center1, center2], list(zip(x, y, strict=False)), radius)
 
     truth = np.array([5, 2])
 
@@ -178,11 +178,14 @@ def test_find_nn_triangles_point():
     tri = Delaunay(pts)
 
     tri_match = tri.find_simplex([4.5, 4.5])
-    nn = find_nn_triangles_point(tri, tri_match, [4.5, 4.5])
+    nn = find_nn_triangles_point(tri, tri_match, (4.5, 4.5))
 
-    # Can't rely on simplex indices, so need to check point indices
-    truth = {(45, 55, 44), (55, 54, 44)}
-    assert {tuple(verts) for verts in tri.simplices[nn]} == truth
+    # Can't rely on simplex indices or the order of points that define them,
+    # so need to be a bit more involved to check
+    truth = [{45, 55, 44}, {55, 54, 44}]
+    found = [set(verts) for verts in tri.simplices[nn]]
+    for s in truth:
+        assert s in found
 
 
 def test_find_local_boundary():

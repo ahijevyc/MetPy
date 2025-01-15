@@ -1,5 +1,5 @@
-pytest==7.3.1
-pytest-mpl==0.16.1
-netCDF4==1.6.3
-coverage==7.2.3
-dask==2023.4.0
+packaging==24.2
+pytest==8.3.4
+pytest-mpl==0.17.0
+netCDF4==1.7.2
+coverage==7.6.10

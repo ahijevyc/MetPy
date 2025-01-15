@@ -10,9 +10,6 @@ on:
       - v[0-9]+.[0-9]+.[0-9]+
   pull_request:
 
-permissions:
-  contents: write
-
 concurrency:
   group: ${{ github.workflow}}-${{ github.head_ref }}
   cancel-in-progress: true
@@ -22,43 +19,34 @@ jobs:
   # Build our docs on Linux against multiple Pythons
   #
   Docs:
-    name: ${{ matrix.python-version }} ${{ matrix.dep-versions }}
+    name: "Linux ${{ matrix.python-version }}"
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
+        python-version: ['3.10', 3.11, 3.12]
+        check-links: [false]
         include:
-          - python-version: 3.8
-            check-links: false
-            dep-versions: requirements.txt
-          - python-version: 3.9
-            check-links: false
-            dep-versions: requirements.txt
-          - python-version: '3.10'
+          - python-version: 3.13
             check-links: true
-            dep-versions: requirements.txt
-          - python-version: 3.11
-            check-links: false
-            dep-versions: requirements.txt
     outputs:
       doc-version: ${{ steps.build-docs.outputs.doc-version }}
 
     steps:
-    # We check out only a limited depth and then pull tags to save time
     - name: Checkout source
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
-        fetch-depth: 100
-
-    - name: Get tags
-      run: git fetch --depth=1 origin +refs/tags/*:refs/tags/*
+        fetch-depth: 150
+        fetch-tags: true
+        persist-credentials: false
 
     - name: Install using PyPI
       uses: ./.github/actions/install-pypi
       with:
-        need-cartopy: true
         type: 'doc'
         python-version: ${{ matrix.python-version }}
+        need-extras: true
+        need-cartopy: true
 
     - name: Build docs
       id: build-docs
@@ -75,12 +63,14 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DOC_VERSION: dev
+    permissions:
+      contents: write
 
     steps:
     - name: Download doc build
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
-        name: Linux-3.10-docs
+        name: Linux-3.13-docs
         path: ./docs/build/html
 
     # This overrides the version "dev" with the proper version if we're building off a
@@ -90,7 +80,7 @@ jobs:
       run: echo "DOC_VERSION=v${{ needs.Docs.outputs.doc-version }}" >> $GITHUB_ENV
 
     - name: Upload to GitHub Pages
-      uses: peaceiris/actions-gh-pages@v3
+      uses: peaceiris/actions-gh-pages@v4
       with:
         deploy_key: ${{ secrets.GHPAGES_DEPLOY_KEY }}
         publish_dir: ./docs/build/html

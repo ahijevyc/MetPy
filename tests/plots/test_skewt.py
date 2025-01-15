@@ -10,10 +10,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
-from metpy.plots import Hodograph, SkewT
+from metpy.plots import Emagram, Hodograph, SkewT, Stuve
+from metpy.testing import autoclose_figure, version_check
 from metpy.units import units
-
-MPL_VERSION = matplotlib.__version__[:5]
 
 
 @pytest.mark.mpl_image_compare(remove_text=True, style='default', tolerance=0.069)
@@ -86,7 +85,7 @@ def test_skewt_default_aspect_empty():
 @pytest.mark.mpl_image_compare(tolerance=0., remove_text=True, style='default')
 def test_skewt_mixing_line_args():
     """Test plot_mixing_lines accepting kwargs for mixing ratio and pressure levels."""
-    # Explicitly pass default values as kwargs the, should recreate NWS SkewT PDF as above
+    # Explicitly pass default values as kwargs, should recreate NWS SkewT PDF as above
     fig = plt.figure(figsize=(12, 9))
     skew = SkewT(fig, rotation=43)
     mlines = np.array([0.0004, 0.001, 0.002, 0.004, 0.007, 0.01, 0.016, 0.024, 0.032])
@@ -127,7 +126,8 @@ def test_skewt_with_grid_enabled():
     """Test using SkewT when gridlines are already enabled (#271)."""
     with plt.rc_context(rc={'axes.grid': True}):
         # Also tests when we don't pass in Figure
-        SkewT(aspect='auto')
+        s = SkewT(aspect='auto')
+        plt.close(s.ax.figure)
 
 
 @pytest.mark.mpl_image_compare(tolerance=0., remove_text=True, style='default')
@@ -140,8 +140,8 @@ def test_skewt_arbitrary_rect():
 
 def test_skewt_subplot_rect_conflict():
     """Test the subplot/rect conflict failure."""
-    with pytest.raises(ValueError):
-        SkewT(rect=(0.15, 0.35, 0.8, 0.3), subplot=(1, 1, 1))
+    with pytest.raises(ValueError), autoclose_figure(figsize=(7, 7)) as fig:
+        SkewT(fig, rect=(0.15, 0.35, 0.8, 0.3), subplot=(1, 1, 1))
 
 
 @pytest.mark.mpl_image_compare(tolerance=0.0198, remove_text=True, style='default')
@@ -156,8 +156,10 @@ def test_skewt_units():
     skew.ax.axvline(-10, color='orange')
 
     # On Matplotlib <= 3.6, ax[hv]line() doesn't trigger unit labels
-    assert skew.ax.get_xlabel() == ('degree_Celsius' if MPL_VERSION == '3.7.0' else '')
-    assert skew.ax.get_ylabel() == ('hectopascal' if MPL_VERSION == '3.7.0' else '')
+    assert skew.ax.get_xlabel() == (
+        'degree_Celsius' if version_check('matplotlib==3.7.0') else '')
+    assert skew.ax.get_ylabel() == (
+        'hectopascal' if version_check('matplotlib==3.7.0') else '')
 
     # Clear them for the image test
     skew.ax.set_xlabel('')
@@ -261,12 +263,12 @@ def test_skewt_shade_area(test_profile):
 def test_skewt_shade_area_invalid(test_profile):
     """Test shading areas on a SkewT plot."""
     p, t, _, tp = test_profile
-    fig = plt.figure(figsize=(9, 9))
-    skew = SkewT(fig, aspect='auto')
-    skew.plot(p, t, 'r')
-    skew.plot(p, tp, 'k')
-    with pytest.raises(ValueError):
-        skew.shade_area(p, t, tp, which='positve')
+    with autoclose_figure(figsize=(9, 9)) as fig:
+        skew = SkewT(fig, aspect='auto')
+        skew.plot(p, t, 'r')
+        skew.plot(p, tp, 'k')
+        with pytest.raises(ValueError):
+            skew.shade_area(p, t, tp, which='positve')
 
 
 @pytest.mark.mpl_image_compare(tolerance=0.033, remove_text=True, style='default')
@@ -319,8 +321,8 @@ def test_hodograph_api():
     return fig
 
 
-@pytest.mark.mpl_image_compare(remove_text=True,
-                               tolerance=0.6 if MPL_VERSION.startswith('3.3') else 0.)
+@pytest.mark.mpl_image_compare(
+    remove_text=True, tolerance=0.6 if version_check('matplotlib==3.5') else 0.)
 def test_hodograph_units():
     """Test passing quantities to Hodograph."""
     fig = plt.figure(figsize=(9, 9))
@@ -355,7 +357,8 @@ def test_hodograph_masked_array():
 
 def test_hodograph_alone():
     """Test to create Hodograph without specifying axes."""
-    Hodograph()
+    h = Hodograph()
+    plt.close(h.ax.figure)
 
 
 @pytest.mark.mpl_image_compare(tolerance=0, remove_text=True)
@@ -429,10 +432,10 @@ def test_skewt_barb_unit_conversion_exception(u, v):
     """Test that an error is raised if unit conversion is requested on plain arrays."""
     p_wind = np.array([500]) * units.hPa
 
-    fig = plt.figure(figsize=(9, 9))
-    skew = SkewT(fig, aspect='auto')
-    with pytest.raises(ValueError):
-        skew.plot_barbs(p_wind, u, v, plot_units='knots')
+    with autoclose_figure(figsize=(9, 9)) as fig:
+        skew = SkewT(fig, aspect='auto')
+        with pytest.raises(ValueError):
+            skew.plot_barbs(p_wind, u, v, plot_units='knots')
 
 
 @pytest.mark.mpl_image_compare(tolerance=0, remove_text=True)
@@ -490,6 +493,54 @@ def test_hodograph_plot_layers_bound_units():
     return fig
 
 
+@pytest.mark.mpl_image_compare(tolerance=0)
+def test_hodograph_plot_colors_with_unitless_intervals():
+    """Test hodograph colored layers when intervals have no units."""
+    fig = plt.figure(figsize=(7, 7))
+    ax = fig.add_subplot(1, 1, 1)
+    hodo = Hodograph(ax, component_range=50)
+    hodo.add_grid(10)
+    u = np.array([0, 6, 26, 32, 48])
+    v = np.array([0, 23, 34, 23, 5])
+    p = np.flip(np.array([900, 750, 600, 450, 250]))
+    intervals = np.flip(np.array([1000, 850, 700, 500, 300, 200]))
+    colors = ['red', 'green', 'yellow', 'blue', 'purple']
+    hodo.plot_colormapped(u, v, p, intervals=intervals, colors=colors)
+    return fig
+
+
+@pytest.mark.mpl_image_compare(tolerance=0)
+def test_hodograph_plot_colors_with_pressure_intervals():
+    """Test hodograph colored layers when intervals are given in units of pressure."""
+    fig = plt.figure(figsize=(7, 7))
+    ax = fig.add_subplot(1, 1, 1)
+    hodo = Hodograph(ax, component_range=50)
+    hodo.add_grid(10)
+    u = np.array([0, 6, 26, 32, 48])
+    v = np.array([0, 23, 34, 23, 5])
+    p = units.Quantity(np.flip(np.array([900, 750, 600, 450, 250])), 'hPa')
+    intervals = units.Quantity(np.flip(np.array([1000, 850, 700, 500, 300, 200])), 'hPa')
+    colors = ['red', 'green', 'yellow', 'blue', 'purple']
+    hodo.plot_colormapped(u, v, p, intervals=intervals, colors=colors)
+    return fig
+
+
+@pytest.mark.mpl_image_compare(tolerance=0)
+def test_hodograph_plot_colors_with_height_intervals():
+    """Test hodograph colored layers when intervals are given in units of height."""
+    fig = plt.figure(figsize=(7, 7))
+    ax = fig.add_subplot(1, 1, 1)
+    hodo = Hodograph(ax, component_range=50)
+    hodo.add_grid(10)
+    u = np.array([0, 6, 26, 32, 48])
+    v = np.array([0, 23, 34, 23, 5])
+    h = units.Quantity(np.array([0.1, 3.5, 5.5, 10.9, 14.0]), 'km')
+    intervals = units.Quantity(np.array([0, 3, 6, 9, 12, 15]), 'km')
+    colors = ['red', 'green', 'yellow', 'blue', 'purple']
+    hodo.plot_colormapped(u, v, h, intervals=intervals, colors=colors)
+    return fig
+
+
 @pytest.mark.mpl_image_compare(tolerance=0, remove_text=True)
 def test_hodograph_plot_arbitrary_layer():
     """Test hodograph colored layers for arbitrary variables without interpolation."""
@@ -522,6 +573,316 @@ def test_hodograph_wind_vectors():
 
 def test_hodograph_range_with_units():
     """Tests making a hodograph with a range with units."""
-    fig = plt.figure(figsize=(6, 6))
-    ax = fig.add_subplot(1, 1, 1)
-    Hodograph(ax, component_range=60. * units.knots)
+    with autoclose_figure(figsize=(6, 6)) as fig:
+        ax = fig.add_subplot(1, 1, 1)
+        Hodograph(ax, component_range=60. * units.knots)
+
+
+@pytest.mark.mpl_image_compare(remove_text=True, style='default', tolerance=0.069)
+def test_stuve_api():
+    """Test the Stuve API."""
+    with matplotlib.rc_context({'axes.autolimit_mode': 'data'}):
+        fig = plt.figure(figsize=(9, 9))
+        stuve = Stuve(fig, aspect='auto')
+
+        # Plot the data using normal plotting functions, in this case using
+        # log scaling in Y, as dictated by the typical meteorological plot
+        p = np.linspace(1000, 100, 10)
+        t = np.linspace(20, -20, 10)
+        u = np.linspace(-10, 10, 10)
+        stuve.plot(p, t, 'r')
+        stuve.plot_barbs(p, u, u)
+
+        stuve.ax.set_xlim(-20, 30)
+        stuve.ax.set_ylim(1000, 100)
+
+        # Add the relevant special lines
+        stuve.plot_dry_adiabats()
+        stuve.plot_moist_adiabats()
+        stuve.plot_mixing_lines()
+
+        # Call again to hit removal statements
+        stuve.plot_dry_adiabats()
+        stuve.plot_moist_adiabats()
+        stuve.plot_mixing_lines()
+
+    return fig
+
+
+@pytest.mark.mpl_image_compare(tolerance=0., remove_text=True, style='default')
+def test_stuve_default_aspect_empty():
+    """Test Stuve with default aspect and no plots, only special lines."""
+    fig = plt.figure(figsize=(12, 9))
+    stuve = Stuve(fig)
+    stuve.plot_dry_adiabats()
+    stuve.plot_moist_adiabats()
+    stuve.plot_mixing_lines()
+    return fig
+
+
+@pytest.mark.mpl_image_compare(tolerance=0., remove_text=True, style='default')
+def test_stuve_mixing_line_args():
+    """Test plot_mixing_lines accepting kwargs for mixing ratio and pressure levels."""
+    fig = plt.figure(figsize=(12, 9))
+    stuve = Stuve(fig)
+    mlines = np.array([0.0004, 0.001, 0.002, 0.004, 0.007, 0.01, 0.016, 0.024, 0.032])
+    press = units.Quantity(np.linspace(600, max(stuve.ax.get_ylim())), 'mbar')
+    stuve.plot_dry_adiabats()
+    stuve.plot_moist_adiabats()
+    stuve.plot_mixing_lines(mixing_ratio=mlines, pressure=press)
+    return fig
+
+
+@pytest.mark.mpl_image_compare(tolerance=0., remove_text=False, style='default',
+                               savefig_kwargs={'bbox_inches': 'tight'})
+def test_stuve_tight_bbox():
+    """Test Stuve when saved with `savefig(..., bbox_inches='tight')`."""
+    fig = plt.figure(figsize=(12, 9))
+    Stuve(fig)
+    return fig
+
+
+@pytest.mark.mpl_image_compare(tolerance=0.811, remove_text=True, style='default')
+def test_stuve_subplot():
+    """Test using Stuve on a sub-plot."""
+    fig = plt.figure(figsize=(9, 9))
+    Stuve(fig, subplot=(2, 2, 1), aspect='auto')
+    return fig
+
+
+@pytest.mark.mpl_image_compare(tolerance=0, remove_text=True, style='default')
+def test_stuve_gridspec():
+    """Test using Stuve on a GridSpec sub-plot."""
+    fig = plt.figure(figsize=(9, 9))
+    gs = GridSpec(1, 2)
+    Stuve(fig, subplot=gs[0, 1], aspect='auto')
+    return fig
+
+
+def test_stuve_with_grid_enabled():
+    """Test using Stuve when gridlines are already enabled (#271)."""
+    with plt.rc_context(rc={'axes.grid': True}):
+        # Also tests when we don't pass in Figure
+        s = Stuve(aspect='auto')
+        plt.close(s.ax.figure)
+
+
+@pytest.mark.mpl_image_compare(tolerance=0., remove_text=True, style='default')
+def test_stuve_arbitrary_rect():
+    """Test placing the Stuve in an arbitrary rectangle."""
+    fig = plt.figure(figsize=(9, 9))
+    Stuve(fig, rect=(0.15, 0.35, 0.8, 0.3), aspect='auto')
+    return fig
+
+
+@pytest.mark.mpl_image_compare(tolerance=.033, remove_text=True, style='default')
+def test_stuve_shade_cape_cin(test_profile):
+    """Test shading CAPE and CIN on a Stuve plot."""
+    p, t, td, tp = test_profile
+
+    with matplotlib.rc_context({'axes.autolimit_mode': 'data'}):
+        fig = plt.figure(figsize=(9, 9))
+        stuve = Stuve(fig, aspect='auto')
+        stuve.plot(p, t, 'r')
+        stuve.plot(p, tp, 'k')
+        stuve.shade_cape(p, t, tp)
+        stuve.shade_cin(p, t, tp, td)
+        stuve.ax.set_xlim(-50, 50)
+        stuve.ax.set_ylim(1000, 100)
+
+        # This works around the fact that newer pint versions default to degrees_Celsius
+        stuve.ax.set_xlabel('degC')
+
+    return fig
+
+
+@pytest.mark.mpl_image_compare(tolerance=0.033, remove_text=True, style='default')
+def test_stuve_shade_area(test_profile):
+    """Test shading areas on a Stuve plot."""
+    p, t, _, tp = test_profile
+
+    with matplotlib.rc_context({'axes.autolimit_mode': 'data'}):
+        fig = plt.figure(figsize=(9, 9))
+        stuve = Stuve(fig, aspect='auto')
+        stuve.plot(p, t, 'r')
+        stuve.plot(p, tp, 'k')
+        stuve.shade_area(p, t, tp)
+        stuve.ax.set_xlim(-50, 50)
+        stuve.ax.set_ylim(1000, 100)
+
+        # This works around the fact that newer pint versions default to degrees_Celsius
+        stuve.ax.set_xlabel('degC')
+
+    return fig
+
+
+@pytest.mark.mpl_image_compare(tolerance=0.039, remove_text=True, style='default')
+def test_stuve_wide_aspect_ratio(test_profile):
+    """Test plotting a stuveT with a wide aspect ratio."""
+    p, t, _, tp = test_profile
+
+    fig = plt.figure(figsize=(12.5, 3))
+    stuve = Stuve(fig, aspect='auto')
+    stuve.plot(p, t, 'r')
+    stuve.plot(p, tp, 'k')
+    stuve.ax.set_xlim(-30, 50)
+    stuve.ax.set_ylim(1050, 700)
+
+    # This works around the fact that newer pint versions default to degrees_Celsius
+    stuve.ax.set_xlabel('degC')
+    return fig
+
+
+@pytest.mark.mpl_image_compare(remove_text=True, style='default', tolerance=0.069)
+def test_emagram_api():
+    """Test the Emagram API."""
+    with matplotlib.rc_context({'axes.autolimit_mode': 'data'}):
+        fig = plt.figure(figsize=(9, 9))
+        emagram = Emagram(fig, aspect='auto')
+
+        # Plot the data using normal plotting functions, in this case using
+        # log scaling in Y, as dictated by the typical meteorological plot
+        p = np.linspace(1000, 100, 10)
+        t = np.linspace(20, -20, 10)
+        u = np.linspace(-10, 10, 10)
+        emagram.plot(p, t, 'r')
+        emagram.plot_barbs(p, u, u)
+
+        emagram.ax.set_xlim(-20, 30)
+        emagram.ax.set_ylim(1000, 100)
+
+        # Add the relevant special lines
+        emagram.plot_dry_adiabats()
+        emagram.plot_moist_adiabats()
+        emagram.plot_mixing_lines()
+
+        # Call again to hit removal statements
+        emagram.plot_dry_adiabats()
+        emagram.plot_moist_adiabats()
+        emagram.plot_mixing_lines()
+
+    return fig
+
+
+@pytest.mark.mpl_image_compare(tolerance=0.001, remove_text=True, style='default')
+def test_emagram_default_aspect_empty():
+    """Test Emagram with default aspect and no plots, only special lines."""
+    fig = plt.figure(figsize=(12, 9))
+    emagram = Emagram(fig)
+    emagram.plot_dry_adiabats()
+    emagram.plot_moist_adiabats()
+    emagram.plot_mixing_lines()
+    return fig
+
+
+@pytest.mark.mpl_image_compare(tolerance=0.001, remove_text=True, style='default')
+def test_emagram_mixing_line_args():
+    """Test plot_mixing_lines accepting kwargs for mixing ratio and pressure levels."""
+    fig = plt.figure(figsize=(12, 9))
+    emagram = Emagram(fig)
+    mlines = np.array([0.0004, 0.001, 0.002, 0.004, 0.007, 0.01, 0.016, 0.024, 0.032])
+    press = units.Quantity(np.linspace(600, max(emagram.ax.get_ylim())), 'mbar')
+    emagram.plot_dry_adiabats()
+    emagram.plot_moist_adiabats()
+    emagram.plot_mixing_lines(mixing_ratio=mlines, pressure=press)
+    return fig
+
+
+@pytest.mark.mpl_image_compare(tolerance=0., remove_text=False, style='default',
+                               savefig_kwargs={'bbox_inches': 'tight'})
+def test_emagram_tight_bbox():
+    """Test Emagram when saved with `savefig(..., bbox_inches='tight')`."""
+    fig = plt.figure(figsize=(12, 9))
+    Emagram(fig)
+    return fig
+
+
+@pytest.mark.mpl_image_compare(tolerance=0.811, remove_text=True, style='default')
+def test_emagram_subplot():
+    """Test using Emagram on a sub-plot."""
+    fig = plt.figure(figsize=(9, 9))
+    Emagram(fig, subplot=(2, 2, 1), aspect='auto')
+    return fig
+
+
+@pytest.mark.mpl_image_compare(tolerance=0, remove_text=True, style='default')
+def test_emagram_gridspec():
+    """Test using Emagram on a GridSpec sub-plot."""
+    fig = plt.figure(figsize=(9, 9))
+    gs = GridSpec(1, 2)
+    Emagram(fig, subplot=gs[0, 1], aspect='auto')
+    return fig
+
+
+def test_emagram_with_grid_enabled():
+    """Test using Emagram when gridlines are already enabled (#271)."""
+    with plt.rc_context(rc={'axes.grid': True}):
+        # Also tests when we don't pass in Figure
+        s = Emagram(aspect='auto')
+        plt.close(s.ax.figure)
+
+
+@pytest.mark.mpl_image_compare(tolerance=0., remove_text=True, style='default')
+def test_emagram_arbitrary_rect():
+    """Test placing the Emagram in an arbitrary rectangle."""
+    fig = plt.figure(figsize=(9, 9))
+    Emagram(fig, rect=(0.15, 0.35, 0.8, 0.3), aspect='auto')
+    return fig
+
+
+@pytest.mark.mpl_image_compare(tolerance=.033, remove_text=True, style='default')
+def test_emagram_shade_cape_cin(test_profile):
+    """Test shading CAPE and CIN on an Emagram plot."""
+    p, t, td, tp = test_profile
+
+    with matplotlib.rc_context({'axes.autolimit_mode': 'data'}):
+        fig = plt.figure(figsize=(9, 9))
+        emagram = Emagram(fig, aspect='auto')
+        emagram.plot(p, t, 'r')
+        emagram.plot(p, tp, 'k')
+        emagram.shade_cape(p, t, tp)
+        emagram.shade_cin(p, t, tp, td)
+        emagram.ax.set_xlim(-50, 50)
+        emagram.ax.set_ylim(1000, 100)
+
+        # This works around the fact that newer pint versions default to degrees_Celsius
+        emagram.ax.set_xlabel('degC')
+
+    return fig
+
+
+@pytest.mark.mpl_image_compare(tolerance=0.033, remove_text=True, style='default')
+def test_emagram_shade_area(test_profile):
+    """Test shading areas on an Emagram plot."""
+    p, t, _, tp = test_profile
+
+    with matplotlib.rc_context({'axes.autolimit_mode': 'data'}):
+        fig = plt.figure(figsize=(9, 9))
+        emagram = Emagram(fig, aspect='auto')
+        emagram.plot(p, t, 'r')
+        emagram.plot(p, tp, 'k')
+        emagram.shade_area(p, t, tp)
+        emagram.ax.set_xlim(-50, 50)
+        emagram.ax.set_ylim(1000, 100)
+
+        # This works around the fact that newer pint versions default to degrees_Celsius
+        emagram.ax.set_xlabel('degC')
+
+    return fig
+
+
+@pytest.mark.mpl_image_compare(tolerance=0.039, remove_text=True, style='default')
+def test_emagram_wide_aspect_ratio(test_profile):
+    """Test plotting an Emagram with a wide aspect ratio."""
+    p, t, _, tp = test_profile
+
+    fig = plt.figure(figsize=(12.5, 3))
+    emagram = Emagram(fig, aspect='auto')
+    emagram.plot(p, t, 'r')
+    emagram.plot(p, tp, 'k')
+    emagram.ax.set_xlim(-30, 50)
+    emagram.ax.set_ylim(1050, 700)
+
+    # This works around the fact that newer pint versions default to degrees_Celsius
+    emagram.ax.set_xlabel('degC')
+    return fig

@@ -6,12 +6,11 @@
 import bz2
 from collections import defaultdict, namedtuple, OrderedDict
 import contextlib
-import datetime
+from datetime import datetime, timezone
 import logging
 import pathlib
 import re
 import struct
-from xdrlib import Unpacker
 
 import numpy as np
 from scipy.constants import day, milli
@@ -76,7 +75,8 @@ def bzip_blocks_decompress_all(data):
 def nexrad_to_datetime(julian_date, ms_midnight):
     """Convert NEXRAD date time format to python `datetime.datetime`."""
     # Subtracting one from julian_date is because epoch date is 1
-    return datetime.datetime.utcfromtimestamp((julian_date - 1) * day + ms_midnight * milli)
+    return datetime.fromtimestamp((julian_date - 1) * day + ms_midnight * milli,
+                                  tz=timezone.utc).replace(tzinfo=None)
 
 
 def remap_status(val):
@@ -518,7 +518,7 @@ class Level2File:
                     num_rng = data[offset]
                     codes = data[offset + 1:offset + 1 + 2 * num_rng:2]
                     ends = data[offset + 2:offset + 2 + 2 * num_rng:2]
-                    az_data.append(list(zip(ends, codes)))
+                    az_data.append(list(zip(ends, codes, strict=False)))
                     offset += 2 * num_rng + 1
                 self.clutter_filter_map['data'].append(az_data)
 
@@ -545,12 +545,17 @@ class Level2File:
                 attr = f'VCPAT{num}'
                 dat = self.rda[attr]
                 vcp_hdr = self.vcp_fmt.unpack_from(dat, 0)
-                off = self.vcp_fmt.size
-                els = []
-                for _ in range(vcp_hdr.num_el_cuts):
-                    els.append(self.vcp_el_fmt.unpack_from(dat, off))
-                    off += self.vcp_el_fmt.size
-                self.rda[attr] = vcp_hdr._replace(els=els)
+                # At some point these got changed to spares, so only try to parse the rest if
+                # it looks like the right data.
+                if vcp_hdr.num == num and 0 < 2 * vcp_hdr.size_hw <= len(dat):
+                    off = self.vcp_fmt.size
+                    els = []
+                    for _ in range(vcp_hdr.num_el_cuts):
+                        els.append(self.vcp_el_fmt.unpack_from(dat, off))
+                        off += self.vcp_el_fmt.size
+                    self.rda[attr] = vcp_hdr._replace(els=els)
+                else:  # Otherwise this is just spare and we should dump
+                    self.rda.pop(attr)
 
     msg31_data_hdr_fmt = NamedStruct([('stid', '4s'), ('time_ms', 'L'),
                                       ('date', 'H'), ('az_num', 'H'),
@@ -717,15 +722,8 @@ def float16(val):
     exp = (val >> 10) & 0x1F
     sign = val >> 15
 
-    if exp:
-        value = 2 ** (exp - 16) * (1 + float(frac) / 2**10)
-    else:
-        value = float(frac) / 2**9
-
-    if sign:
-        value *= -1
-
-    return value
+    value = 2 ** (exp - 16) * (1 + float(frac) / 2**10) if exp else float(frac) / 2**9
+    return -value if sign else value
 
 
 def float32(short1, short2):
@@ -1850,10 +1848,10 @@ class Level3File:
         log.debug('Symbology block info: %s', blk)
 
         self.sym_block = []
-        assert blk.divider == -1, ('Bad divider for symbology block: {:d} should be -1'
-                                   .format(blk.divider))
-        assert blk.block_id == 1, ('Bad block ID for symbology block: {:d} should be 1'
-                                   .format(blk.block_id))
+        assert blk.divider == -1, (f'Bad divider for symbology block: {blk.divider} should '
+                                   'be -1')
+        assert blk.block_id == 1, (f'Bad block ID for symbology block: {blk.block_id} should '
+                                   'be 1')
         for _ in range(blk.nlayer):
             layer_hdr = self._buffer.read_struct(self.sym_layer_fmt)
             assert layer_hdr.divider == -1
@@ -1874,10 +1872,10 @@ class Level3File:
     def _unpack_graphblock(self, start, offset):
         self._buffer.jump_to(start, offset)
         hdr = self._buffer.read_struct(self.graph_block_fmt)
-        assert hdr.divider == -1, ('Bad divider for graphical block: {:d} should be -1'
-                                   .format(hdr.divider))
-        assert hdr.block_id == 2, ('Bad block ID for graphical block: {:d} should be 1'
-                                   .format(hdr.block_id))
+        assert hdr.divider == -1, (f'Bad divider for graphical block: {hdr.divider} should '
+                                   f'be -1')
+        assert hdr.block_id == 2, (f'Bad block ID for graphical block: {hdr.block_id} should '
+                                   'be 1')
         self.graph_pages = []
         for page in range(hdr.num_pages):
             page_num = self._buffer.read_int(2, 'big', signed=False)
@@ -1965,7 +1963,7 @@ class Level3File:
             rads.append((start_az, end_az,
                          self._unpack_rle_data(
                              self._buffer.read_binary(2 * rad.num_hwords))))
-        start, end, vals = zip(*rads)
+        start, end, vals = zip(*rads, strict=False)
         return {'start_az': list(start), 'end_az': list(end), 'data': list(vals),
                 'center': (hdr.i_center * self.pos_scale(in_sym_block),
                            hdr.j_center * self.pos_scale(in_sym_block)),
@@ -1986,7 +1984,7 @@ class Level3File:
             start_az = rad.start_angle * 0.1
             end_az = start_az + rad.angle_delta * 0.1
             rads.append((start_az, end_az, self._buffer.read_binary(rad.num_bytes)))
-        start, end, vals = zip(*rads)
+        start, end, vals = zip(*rads, strict=False)
         return {'start_az': list(start), 'end_az': list(end), 'data': list(vals),
                 'center': (hdr.i_center * self.pos_scale(in_sym_block),
                            hdr.j_center * self.pos_scale(in_sym_block)),
@@ -2150,7 +2148,7 @@ class Level3File:
                 row = self._unpack_rle_data(row_bytes)
             else:
                 row = []
-                for run, level in zip(row_bytes[::2], row_bytes[1::2]):
+                for run, level in zip(row_bytes[::2], row_bytes[1::2], strict=False):
                     row.extend([level] * run)
             assert len(row) == lfm_boxes
             rows.append(row)
@@ -2166,7 +2164,7 @@ class Level3File:
             value = None
         scale = self.pos_scale(in_sym_block)
         pos = [b * scale for b in self._buffer.read_binary(num_bytes / 2, '>h')]
-        vectors = list(zip(pos[::2], pos[1::2]))
+        vectors = list(zip(pos[::2], pos[1::2], strict=False))
         return {'vectors': vectors, 'color': value}
 
     def _unpack_packet_vector(self, code, in_sym_block):
@@ -2178,7 +2176,7 @@ class Level3File:
             value = None
         scale = self.pos_scale(in_sym_block)
         pos = [p * scale for p in self._buffer.read_binary(num_bytes / 2, '>h')]
-        vectors = list(zip(pos[::4], pos[1::4], pos[2::4], pos[3::4]))
+        vectors = list(zip(pos[::4], pos[1::4], pos[2::4], pos[3::4], strict=False))
         return {'vectors': vectors, 'color': value}
 
     def _unpack_packet_contour_color(self, code, in_sym_block):
@@ -2198,7 +2196,7 @@ class Level3File:
         vectors = [(startx, starty)]
         num_bytes = self._buffer.read_int(2, 'big', signed=False)
         pos = [b * scale for b in self._buffer.read_binary(num_bytes / 2, '>h')]
-        vectors.extend(zip(pos[::2], pos[1::2]))
+        vectors.extend(zip(pos[::2], pos[1::2], strict=False))
         return {'vectors': vectors}
 
     def _unpack_packet_wind_barbs(self, code, in_sym_block):
@@ -2301,11 +2299,37 @@ class Level3File:
                   0xba07: _unpack_packet_raster_data}
 
 
-class Level3XDRParser(Unpacker):
+class Level3XDRParser:
     """Handle XDR-formatted Level 3 NEXRAD products."""
 
+    def __init__(self, data):
+        """Initialize the parser with a buffer for the bytes."""
+        self._buf = IOBuffer(data)
+
+    def unpack_uint(self):
+        """Unpack a 4-byte unsigned integer."""
+        return self._buf.read_int(4, 'big', False)
+
+    def unpack_int(self):
+        """Unpack a 4-byte signed integer."""
+        return self._buf.read_int(4, 'big', True)
+
+    def unpack_float(self):
+        """Unpack a 4-byte floating-point value."""
+        return self._buf.read_binary(1, '>f')[0]
+
+    def unpack_string(self):
+        """Unpack a string."""
+        n = self.unpack_uint()
+        return self._buf.read_ascii((n + 3) // 4 * 4)[:n]
+
+    def unpack_int_array(self):
+        """Unpack an int array."""
+        n = self.unpack_uint()
+        return self._buf.read_binary(n, '>l')
+
     def __call__(self, code):
-        """Perform the actual unpacking."""
+        """Perform the actual product unpacking."""
         xdr = OrderedDict()
 
         if code == 28:
@@ -2314,12 +2338,10 @@ class Level3XDRParser(Unpacker):
             log.warning('XDR: code %d not implemented', code)
 
         # Check that we got it all
-        self.done()
-        return xdr
+        if not self._buf.at_end():
+            log.warning('Data remains in XDR buffer.')
 
-    def unpack_string(self):
-        """Unpack the internal data as a string."""
-        return Unpacker.unpack_string(self).decode('ascii')
+        return xdr
 
     def _unpack_prod_desc(self):
         xdr = OrderedDict()
@@ -2415,7 +2437,7 @@ class Level3XDRParser(Unpacker):
                                              width=self.unpack_float(),
                                              num_bins=self.unpack_int(),
                                              attributes=self.unpack_string(),
-                                             data=self.unpack_array(self.unpack_int)))
+                                             data=self.unpack_int_array()))
         return ret._replace(radials=rads)
 
     text_fmt = namedtuple('TextComponent', ['parameters', 'text'])

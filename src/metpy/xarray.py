@@ -115,10 +115,10 @@ class MetPyDataArrayAccessor:
         >>> temperature = xr.DataArray([[0, 1], [2, 3]] * units.degC, dims=('lat', 'lon'),
         ...                            coords={'lat': [40, 41], 'lon': [-105, -104]})
         >>> temperature.metpy.x
-        <xarray.DataArray 'lon' (lon: 2)>
+        <xarray.DataArray 'lon' (lon: 2)> Size: 16B
         array([-105, -104])
         Coordinates:
-          * lon      (lon) int64 -105 -104
+          * lon      (lon) int64 16B -105 -104
         Attributes:
             _metpy_axis:  x,longitude
 
@@ -338,15 +338,16 @@ class MetPyDataArrayAccessor:
     def _generate_coordinate_map(self):
         """Generate a coordinate map via CF conventions and other methods."""
         coords = self._data_array.coords.values()
-        # Parse all the coordinates, attempting to identify x, longitude, y, latitude,
-        # vertical, time
-        coord_lists = {'time': [], 'vertical': [], 'y': [], 'latitude': [], 'x': [],
-                       'longitude': []}
+        # Parse all the coordinates, attempting to identify longitude, latitude, x, y,
+        # time, vertical, in that order.
+        coord_lists = {'longitude': [], 'latitude': [], 'x': [], 'y': [], 'time': [],
+                       'vertical': []}
         for coord_var in coords:
             # Identify the coordinate type using check_axis helper
             for axis in coord_lists:
                 if check_axis(coord_var, axis):
                     coord_lists[axis].append(coord_var)
+                    break  # Ensure a coordinate variable only goes to one axis
 
         # Fill in x/y with longitude/latitude if x/y not otherwise present
         for geometric, graticule in (('y', 'latitude'), ('x', 'longitude')):
@@ -621,7 +622,7 @@ class MetPyDataArrayAccessor:
             """Parse key using xarray utils to ensure we have dimension names."""
             if not is_dict_like(key):
                 labels = expanded_indexer(key, self.data_array.ndim)
-                key = dict(zip(self.data_array.dims, labels))
+                key = dict(zip(self.data_array.dims, labels, strict=False))
             return key
 
         def __getitem__(self, key):
@@ -834,9 +835,10 @@ class MetPyDatasetAccessor:
 
         # Attempt to build the crs coordinate
         crs = None
-        if 'grid_mapping' in var.attrs:
-            # Use given CF grid_mapping
-            proj_name = var.attrs['grid_mapping']
+
+        # Check both raw attribute and xarray-handled and moved to encoding
+        proj_name = var.encoding.get('grid_mapping', var.attrs.get('grid_mapping'))
+        if proj_name is not None:
             try:
                 proj_var = self._dataset.variables[proj_name]
             except KeyError:
@@ -1287,10 +1289,7 @@ def preprocess_and_wrap(broadcast=None, wrap_like=None, match_unit=False, to_mag
                 arg_names_to_broadcast = tuple(
                     arg_name for arg_name in broadcast
                     if arg_name in bound_args.arguments
-                    and isinstance(
-                        bound_args.arguments[arg_name],
-                        (xr.DataArray, xr.Variable)
-                    )
+                    and isinstance(bound_args.arguments[arg_name], xr.DataArray | xr.Variable)
                 )
                 broadcasted_args = xr.broadcast(
                     *(bound_args.arguments[arg_name] for arg_name in arg_names_to_broadcast)
@@ -1316,6 +1315,7 @@ def preprocess_and_wrap(broadcast=None, wrap_like=None, match_unit=False, to_mag
                 for i, arg in enumerate(wrap_like):
                     if isinstance(arg, str):
                         match[i] = bound_args.arguments[arg]
+                match = tuple(match)
 
             # Cast all DataArrays to Pint Quantities
             _mutate_arguments(bound_args, xr.DataArray, lambda arg, _: arg.metpy.unit_array)
@@ -1336,8 +1336,8 @@ def preprocess_and_wrap(broadcast=None, wrap_like=None, match_unit=False, to_mag
                 else:
                     wrapping = _wrap_output_like_not_matching_units
 
-                if isinstance(match, list):
-                    return tuple(wrapping(*args) for args in zip(result, match))
+                if isinstance(match, tuple):
+                    return tuple(wrapping(*args) for args in zip(result, match, strict=False))
                 else:
                     return wrapping(result, match)
         return wrapper
