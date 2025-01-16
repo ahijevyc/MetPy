@@ -1068,13 +1068,6 @@ def el(pressure, temperature, parcel_temperature_profile):
         The parcel's temperature profile from which to calculate the EL. Defaults to the
         surface parcel profile.
 
-    which: str, optional
-        Pick which EL to return. Options are 'top', 'bottom', 'wide', 'most_cape', and 'all'.
-        'top' returns the lowest-pressure EL, default.
-        'bottom' returns the highest-pressure EL.
-        'wide' returns the EL whose corresponding LFC is farthest away.
-        'most_cape' returns the EL that results in the most CAPE in the profile.
-
     Returns
     -------
     `pint.Quantity`
