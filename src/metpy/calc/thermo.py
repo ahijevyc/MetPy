@@ -1535,7 +1535,7 @@ def saturation_vapor_pressure(temperature):
         17.67 * (temperature - 273.15) / (temperature - 29.65)
     )
     # Set any nans to 0
-    val = np.nan_to_num(val, nan = 0)
+    val = np.nan_to_num(val)
     return val
 
 
