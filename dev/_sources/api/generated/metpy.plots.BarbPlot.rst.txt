@@ -19,13 +19,20 @@ BarbPlot
       ~BarbPlot.earth_relative
       ~BarbPlot.field
       ~BarbPlot.griddata
+      ~BarbPlot.latitude
       ~BarbPlot.level
+      ~BarbPlot.longitude
+      ~BarbPlot.mpl_args
       ~BarbPlot.name
       ~BarbPlot.parent
       ~BarbPlot.pivot
+      ~BarbPlot.plot_units
       ~BarbPlot.plotdata
+      ~BarbPlot.scale
       ~BarbPlot.skip
       ~BarbPlot.time
+      ~BarbPlot.x
+      ~BarbPlot.y
 
    
    
@@ -46,6 +53,7 @@ BarbPlot
       ~BarbPlot.clear
       ~BarbPlot.clear_collections
       ~BarbPlot.clear_handle
+      ~BarbPlot.copy
       ~BarbPlot.draw
       ~BarbPlot.has_trait
       ~BarbPlot.hold_trait_notifications
@@ -54,9 +62,12 @@ BarbPlot
       ~BarbPlot.on_trait_change
       ~BarbPlot.set_trait
       ~BarbPlot.setup_instance
+      ~BarbPlot.trait_defaults
       ~BarbPlot.trait_events
+      ~BarbPlot.trait_has_value
       ~BarbPlot.trait_metadata
       ~BarbPlot.trait_names
+      ~BarbPlot.trait_values
       ~BarbPlot.traits
       ~BarbPlot.unobserve
       ~BarbPlot.unobserve_all
@@ -77,13 +88,20 @@ BarbPlot
    .. autoattribute:: earth_relative
    .. autoattribute:: field
    .. autoattribute:: griddata
+   .. autoattribute:: latitude
    .. autoattribute:: level
+   .. autoattribute:: longitude
+   .. autoattribute:: mpl_args
    .. autoattribute:: name
    .. autoattribute:: parent
    .. autoattribute:: pivot
+   .. autoattribute:: plot_units
    .. autoattribute:: plotdata
+   .. autoattribute:: scale
    .. autoattribute:: skip
    .. autoattribute:: time
+   .. autoattribute:: x
+   .. autoattribute:: y
 
    
    
@@ -103,6 +121,7 @@ BarbPlot
    .. automethod:: clear
    .. automethod:: clear_collections
    .. automethod:: clear_handle
+   .. automethod:: copy
    .. automethod:: draw
    .. automethod:: has_trait
    .. automethod:: hold_trait_notifications
@@ -111,9 +130,12 @@ BarbPlot
    .. automethod:: on_trait_change
    .. automethod:: set_trait
    .. automethod:: setup_instance
+   .. automethod:: trait_defaults
    .. automethod:: trait_events
+   .. automethod:: trait_has_value
    .. automethod:: trait_metadata
    .. automethod:: trait_names
+   .. automethod:: trait_values
    .. automethod:: traits
    .. automethod:: unobserve
    .. automethod:: unobserve_all

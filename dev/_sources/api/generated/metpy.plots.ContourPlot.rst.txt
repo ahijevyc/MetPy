@@ -18,14 +18,24 @@ ContourPlot
       ~ContourPlot.data
       ~ContourPlot.field
       ~ContourPlot.griddata
+      ~ContourPlot.label_fontsize
+      ~ContourPlot.latitude
       ~ContourPlot.level
       ~ContourPlot.linecolor
       ~ContourPlot.linestyle
       ~ContourPlot.linewidth
+      ~ContourPlot.longitude
+      ~ContourPlot.mpl_args
       ~ContourPlot.name
       ~ContourPlot.parent
+      ~ContourPlot.plot_units
       ~ContourPlot.plotdata
+      ~ContourPlot.scale
+      ~ContourPlot.smooth_contour
+      ~ContourPlot.smooth_field
       ~ContourPlot.time
+      ~ContourPlot.x
+      ~ContourPlot.y
 
    
    
@@ -46,6 +56,7 @@ ContourPlot
       ~ContourPlot.clear
       ~ContourPlot.clear_collections
       ~ContourPlot.clear_handle
+      ~ContourPlot.copy
       ~ContourPlot.draw
       ~ContourPlot.has_trait
       ~ContourPlot.hold_trait_notifications
@@ -54,9 +65,12 @@ ContourPlot
       ~ContourPlot.on_trait_change
       ~ContourPlot.set_trait
       ~ContourPlot.setup_instance
+      ~ContourPlot.trait_defaults
       ~ContourPlot.trait_events
+      ~ContourPlot.trait_has_value
       ~ContourPlot.trait_metadata
       ~ContourPlot.trait_names
+      ~ContourPlot.trait_values
       ~ContourPlot.traits
       ~ContourPlot.unobserve
       ~ContourPlot.unobserve_all
@@ -76,14 +90,24 @@ ContourPlot
    .. autoattribute:: data
    .. autoattribute:: field
    .. autoattribute:: griddata
+   .. autoattribute:: label_fontsize
+   .. autoattribute:: latitude
    .. autoattribute:: level
    .. autoattribute:: linecolor
    .. autoattribute:: linestyle
    .. autoattribute:: linewidth
+   .. autoattribute:: longitude
+   .. autoattribute:: mpl_args
    .. autoattribute:: name
    .. autoattribute:: parent
+   .. autoattribute:: plot_units
    .. autoattribute:: plotdata
+   .. autoattribute:: scale
+   .. autoattribute:: smooth_contour
+   .. autoattribute:: smooth_field
    .. autoattribute:: time
+   .. autoattribute:: x
+   .. autoattribute:: y
 
    
    
@@ -103,6 +127,7 @@ ContourPlot
    .. automethod:: clear
    .. automethod:: clear_collections
    .. automethod:: clear_handle
+   .. automethod:: copy
    .. automethod:: draw
    .. automethod:: has_trait
    .. automethod:: hold_trait_notifications
@@ -111,9 +136,12 @@ ContourPlot
    .. automethod:: on_trait_change
    .. automethod:: set_trait
    .. automethod:: setup_instance
+   .. automethod:: trait_defaults
    .. automethod:: trait_events
+   .. automethod:: trait_has_value
    .. automethod:: trait_metadata
    .. automethod:: trait_names
+   .. automethod:: trait_values
    .. automethod:: traits
    .. automethod:: unobserve
    .. automethod:: unobserve_all

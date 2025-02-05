@@ -13,17 +13,27 @@ ImagePlot
    .. autosummary::
    
       ~ImagePlot.colorbar
+      ~ImagePlot.colorbar_fontsize
       ~ImagePlot.colormap
       ~ImagePlot.cross_validation_lock
       ~ImagePlot.data
       ~ImagePlot.field
       ~ImagePlot.griddata
       ~ImagePlot.image_range
+      ~ImagePlot.latitude
       ~ImagePlot.level
+      ~ImagePlot.longitude
+      ~ImagePlot.mpl_args
       ~ImagePlot.name
       ~ImagePlot.parent
+      ~ImagePlot.plot_units
       ~ImagePlot.plotdata
+      ~ImagePlot.scale
+      ~ImagePlot.smooth_contour
+      ~ImagePlot.smooth_field
       ~ImagePlot.time
+      ~ImagePlot.x
+      ~ImagePlot.y
 
    
    
@@ -44,6 +54,7 @@ ImagePlot
       ~ImagePlot.clear
       ~ImagePlot.clear_collections
       ~ImagePlot.clear_handle
+      ~ImagePlot.copy
       ~ImagePlot.draw
       ~ImagePlot.has_trait
       ~ImagePlot.hold_trait_notifications
@@ -52,9 +63,12 @@ ImagePlot
       ~ImagePlot.on_trait_change
       ~ImagePlot.set_trait
       ~ImagePlot.setup_instance
+      ~ImagePlot.trait_defaults
       ~ImagePlot.trait_events
+      ~ImagePlot.trait_has_value
       ~ImagePlot.trait_metadata
       ~ImagePlot.trait_names
+      ~ImagePlot.trait_values
       ~ImagePlot.traits
       ~ImagePlot.unobserve
       ~ImagePlot.unobserve_all
@@ -69,17 +83,27 @@ ImagePlot
 
    
    .. autoattribute:: colorbar
+   .. autoattribute:: colorbar_fontsize
    .. autoattribute:: colormap
    .. autoattribute:: cross_validation_lock
    .. autoattribute:: data
    .. autoattribute:: field
    .. autoattribute:: griddata
    .. autoattribute:: image_range
+   .. autoattribute:: latitude
    .. autoattribute:: level
+   .. autoattribute:: longitude
+   .. autoattribute:: mpl_args
    .. autoattribute:: name
    .. autoattribute:: parent
+   .. autoattribute:: plot_units
    .. autoattribute:: plotdata
+   .. autoattribute:: scale
+   .. autoattribute:: smooth_contour
+   .. autoattribute:: smooth_field
    .. autoattribute:: time
+   .. autoattribute:: x
+   .. autoattribute:: y
 
    
    
@@ -99,6 +123,7 @@ ImagePlot
    .. automethod:: clear
    .. automethod:: clear_collections
    .. automethod:: clear_handle
+   .. automethod:: copy
    .. automethod:: draw
    .. automethod:: has_trait
    .. automethod:: hold_trait_notifications
@@ -107,9 +132,12 @@ ImagePlot
    .. automethod:: on_trait_change
    .. automethod:: set_trait
    .. automethod:: setup_instance
+   .. automethod:: trait_defaults
    .. automethod:: trait_events
+   .. automethod:: trait_has_value
    .. automethod:: trait_metadata
    .. automethod:: trait_names
+   .. automethod:: trait_values
    .. automethod:: traits
    .. automethod:: unobserve
    .. automethod:: unobserve_all

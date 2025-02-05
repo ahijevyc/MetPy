@@ -60,6 +60,10 @@ skew.plot_barbs(p, u, v)
 skew.ax.set_ylim(1000, 100)
 skew.ax.set_xlim(-40, 60)
 
+# Set some better labels than the default
+skew.ax.set_xlabel(f'Temperature ({T.units:~P})')
+skew.ax.set_ylabel(f'Pressure ({p.units:~P})')
+
 # Calculate LCL height and plot as black dot. Because `p`'s first value is
 # ~1000 mb and its last value is ~250 mb, the `0` index is selected for
 # `p`, `T`, and `Td` to lift the parcel from the surface. If `p` was inverted,
@@ -73,7 +77,7 @@ prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
 skew.plot(p, prof, 'k', linewidth=2)
 
 # Shade areas of CAPE and CIN
-skew.shade_cin(p, T, prof)
+skew.shade_cin(p, T, prof, Td)
 skew.shade_cape(p, T, prof)
 
 # An example of a slanted line at constant T -- in this case the 0

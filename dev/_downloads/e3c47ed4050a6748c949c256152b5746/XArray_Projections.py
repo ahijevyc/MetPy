@@ -2,6 +2,7 @@
 # Distributed under the terms of the BSD 3-Clause License.
 # SPDX-License-Identifier: BSD-3-Clause
 """
+==========================
 XArray Projection Handling
 ==========================
 
@@ -13,7 +14,7 @@ import matplotlib.pyplot as plt
 import xarray as xr
 
 # Any import of metpy will activate the accessors
-from metpy.testing import get_test_data
+from metpy.cbook import get_test_data
 
 ds = xr.open_dataset(get_test_data('narr_example.nc', as_file_obj=False))
 data_var = ds.metpy.parse_cf('Temperature')

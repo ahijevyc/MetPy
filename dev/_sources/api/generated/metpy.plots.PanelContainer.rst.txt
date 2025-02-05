@@ -14,6 +14,7 @@ PanelContainer
    
       ~PanelContainer.cross_validation_lock
       ~PanelContainer.figure
+      ~PanelContainer.mpl_args
       ~PanelContainer.panel
       ~PanelContainer.panels
       ~PanelContainer.size
@@ -34,6 +35,7 @@ PanelContainer
       ~PanelContainer.class_own_traits
       ~PanelContainer.class_trait_names
       ~PanelContainer.class_traits
+      ~PanelContainer.copy
       ~PanelContainer.draw
       ~PanelContainer.has_trait
       ~PanelContainer.hold_trait_notifications
@@ -45,9 +47,12 @@ PanelContainer
       ~PanelContainer.set_trait
       ~PanelContainer.setup_instance
       ~PanelContainer.show
+      ~PanelContainer.trait_defaults
       ~PanelContainer.trait_events
+      ~PanelContainer.trait_has_value
       ~PanelContainer.trait_metadata
       ~PanelContainer.trait_names
+      ~PanelContainer.trait_values
       ~PanelContainer.traits
       ~PanelContainer.unobserve
       ~PanelContainer.unobserve_all
@@ -63,6 +68,7 @@ PanelContainer
    
    .. autoattribute:: cross_validation_lock
    .. autoattribute:: figure
+   .. autoattribute:: mpl_args
    .. autoattribute:: panel
    .. autoattribute:: panels
    .. autoattribute:: size
@@ -82,6 +88,7 @@ PanelContainer
    .. automethod:: class_own_traits
    .. automethod:: class_trait_names
    .. automethod:: class_traits
+   .. automethod:: copy
    .. automethod:: draw
    .. automethod:: has_trait
    .. automethod:: hold_trait_notifications
@@ -93,9 +100,12 @@ PanelContainer
    .. automethod:: set_trait
    .. automethod:: setup_instance
    .. automethod:: show
+   .. automethod:: trait_defaults
    .. automethod:: trait_events
+   .. automethod:: trait_has_value
    .. automethod:: trait_metadata
    .. automethod:: trait_names
+   .. automethod:: trait_values
    .. automethod:: traits
    .. automethod:: unobserve
    .. automethod:: unobserve_all

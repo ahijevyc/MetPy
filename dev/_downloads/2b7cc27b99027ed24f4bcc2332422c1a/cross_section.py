@@ -23,8 +23,9 @@ from metpy.interpolate import cross_section
 ##############################
 # **Getting the data**
 #
-# This example uses NARR reanalysis data for 18 UTC 04 April 1987 from NCEI
-# (https://www.ncdc.noaa.gov/data-access/model-data).
+# This example uses [NARR reanalysis data](
+# https://www.ncei.noaa.gov/products/weather-climate-models/north-american-regional)
+# for 18 UTC 04 April 1987 from NCEI.
 #
 # We use MetPy's CF parsing to get the data ready for use, and squeeze down the size-one time
 # dimension.
@@ -49,27 +50,21 @@ print(cross)
 # For this example, we will be plotting potential temperature, relative humidity, and
 # tangential/normal winds. And so, we need to calculate those, and add them to the dataset:
 
-temperature, pressure, specific_humidity = xr.broadcast(cross['Temperature'],
-                                                        cross['isobaric'],
-                                                        cross['Specific_humidity'])
-
-theta = mpcalc.potential_temperature(pressure, temperature)
-rh = mpcalc.relative_humidity_from_specific_humidity(specific_humidity, temperature, pressure)
-
-# These calculations return unit arrays, so put those back into DataArrays in our Dataset
-cross['Potential_temperature'] = xr.DataArray(theta,
-                                              coords=temperature.coords,
-                                              dims=temperature.dims,
-                                              attrs={'units': theta.units})
-cross['Relative_humidity'] = xr.DataArray(rh,
-                                          coords=specific_humidity.coords,
-                                          dims=specific_humidity.dims,
-                                          attrs={'units': rh.units})
-
-cross['u_wind'].metpy.convert_units('knots')
-cross['v_wind'].metpy.convert_units('knots')
-cross['t_wind'], cross['n_wind'] = mpcalc.cross_section_components(cross['u_wind'],
-                                                                   cross['v_wind'])
+cross['Potential_temperature'] = mpcalc.potential_temperature(
+    cross['isobaric'],
+    cross['Temperature']
+)
+cross['Relative_humidity'] = mpcalc.relative_humidity_from_specific_humidity(
+    cross['isobaric'],
+    cross['Temperature'],
+    cross['Specific_humidity']
+)
+cross['u_wind'] = cross['u_wind'].metpy.convert_units('knots')
+cross['v_wind'] = cross['v_wind'].metpy.convert_units('knots')
+cross['t_wind'], cross['n_wind'] = mpcalc.cross_section_components(
+    cross['u_wind'],
+    cross['v_wind']
+)
 
 print(cross)
 
@@ -101,7 +96,6 @@ ax.barbs(cross['lon'][wind_slc_horz], cross['isobaric'][wind_slc_vert],
 
 # Adjust the y-axis to be logarithmic
 ax.set_yscale('symlog')
-ax.set_yticklabels(np.arange(1000, 50, -100))
 ax.set_ylim(cross['isobaric'].max(), cross['isobaric'].min())
 ax.set_yticks(np.arange(1000, 50, -100))
 
@@ -125,11 +119,10 @@ ax_inset.add_feature(cfeature.STATES.with_scale('50m'), edgecolor='k', alpha=0.2
 
 # Set the titles and axes labels
 ax_inset.set_title('')
-ax.set_title('NARR Cross-Section \u2013 {} to {} \u2013 Valid: {}\n'
-             'Potential Temperature (K), Tangential/Normal Winds (knots), '
-             'Relative Humidity (dimensionless)\n'
-             'Inset: Cross-Section Path and 500 hPa Geopotential Height'.format(
-                 start, end, cross['time'].dt.strftime('%Y-%m-%d %H:%MZ').item()))
+ax.set_title(f'NARR Cross-Section \u2013 {start} to {end} \u2013 '
+             f'Valid: {cross["time"].dt.strftime("%Y-%m-%d %H:%MZ").item()}\n'
+             'Potential Temperature (K), Tangential/Normal Winds (knots), Relative Humidity '
+             '(dimensionless)\nInset: Cross-Section Path and 500 hPa Geopotential Height')
 ax.set_ylabel('Pressure (hPa)')
 ax.set_xlabel('Longitude (degrees east)')
 rh_colorbar.set_label('Relative Humidity (dimensionless)')

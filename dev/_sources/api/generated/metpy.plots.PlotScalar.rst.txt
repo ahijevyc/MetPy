@@ -16,11 +16,20 @@ PlotScalar
       ~PlotScalar.data
       ~PlotScalar.field
       ~PlotScalar.griddata
+      ~PlotScalar.latitude
       ~PlotScalar.level
+      ~PlotScalar.longitude
+      ~PlotScalar.mpl_args
       ~PlotScalar.name
       ~PlotScalar.parent
+      ~PlotScalar.plot_units
       ~PlotScalar.plotdata
+      ~PlotScalar.scale
+      ~PlotScalar.smooth_contour
+      ~PlotScalar.smooth_field
       ~PlotScalar.time
+      ~PlotScalar.x
+      ~PlotScalar.y
 
    
    
@@ -41,6 +50,7 @@ PlotScalar
       ~PlotScalar.clear
       ~PlotScalar.clear_collections
       ~PlotScalar.clear_handle
+      ~PlotScalar.copy
       ~PlotScalar.draw
       ~PlotScalar.has_trait
       ~PlotScalar.hold_trait_notifications
@@ -49,9 +59,12 @@ PlotScalar
       ~PlotScalar.on_trait_change
       ~PlotScalar.set_trait
       ~PlotScalar.setup_instance
+      ~PlotScalar.trait_defaults
       ~PlotScalar.trait_events
+      ~PlotScalar.trait_has_value
       ~PlotScalar.trait_metadata
       ~PlotScalar.trait_names
+      ~PlotScalar.trait_values
       ~PlotScalar.traits
       ~PlotScalar.unobserve
       ~PlotScalar.unobserve_all
@@ -69,11 +82,20 @@ PlotScalar
    .. autoattribute:: data
    .. autoattribute:: field
    .. autoattribute:: griddata
+   .. autoattribute:: latitude
    .. autoattribute:: level
+   .. autoattribute:: longitude
+   .. autoattribute:: mpl_args
    .. autoattribute:: name
    .. autoattribute:: parent
+   .. autoattribute:: plot_units
    .. autoattribute:: plotdata
+   .. autoattribute:: scale
+   .. autoattribute:: smooth_contour
+   .. autoattribute:: smooth_field
    .. autoattribute:: time
+   .. autoattribute:: x
+   .. autoattribute:: y
 
    
    
@@ -93,6 +115,7 @@ PlotScalar
    .. automethod:: clear
    .. automethod:: clear_collections
    .. automethod:: clear_handle
+   .. automethod:: copy
    .. automethod:: draw
    .. automethod:: has_trait
    .. automethod:: hold_trait_notifications
@@ -101,9 +124,12 @@ PlotScalar
    .. automethod:: on_trait_change
    .. automethod:: set_trait
    .. automethod:: setup_instance
+   .. automethod:: trait_defaults
    .. automethod:: trait_events
+   .. automethod:: trait_has_value
    .. automethod:: trait_metadata
    .. automethod:: trait_names
+   .. automethod:: trait_values
    .. automethod:: traits
    .. automethod:: unobserve
    .. automethod:: unobserve_all

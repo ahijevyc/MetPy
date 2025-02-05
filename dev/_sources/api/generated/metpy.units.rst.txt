@@ -1,9 +1,16 @@
+﻿
+   
+      
+   
 
-
-units
-===========
+Units ``(metpy.units)``
+=======================
 
 .. automodule:: metpy.units
+
+   
+   
+   
 
    
    
@@ -11,16 +18,9 @@ units
 
    .. autosummary::
       :toctree: ./
-
    
-      atleast_1d
-      atleast_2d
-      check_units
-      concatenate
-      diff
-      masked_array
+      setup_registry
       pandas_dataframe_to_unit_arrays
-      signature
    
    
 
@@ -29,14 +29,6 @@ units
    
 
    
-   
-   .. rubric:: Exceptions
-
-   .. autosummary::
-      :toctree: ./
-   
-      DimensionalityError
-      UndefinedUnitError
    
    
 
