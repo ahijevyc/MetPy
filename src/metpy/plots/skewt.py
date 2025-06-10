@@ -9,6 +9,7 @@ Contain tools for making thermodynamic diagrams, including the base plotting cla
 
 from contextlib import ExitStack
 
+import logging
 from matplotlib.axes import Axes
 import matplotlib.axis as maxis
 from matplotlib.collections import LineCollection
@@ -673,7 +674,7 @@ class SkewT:
 
         return self.ax.fill_betweenx(*arrs, **fill_args)
 
-    def shade_cape(self, pressure, t, t_parcel, **kwargs):
+    def shade_cape(self, pressure, tv, tv_parcel, **kwargs):
         r"""Shade areas of Convective Available Potential Energy (CAPE).
 
         Shades areas where the parcel is warmer than the environment (areas of positive
@@ -683,12 +684,10 @@ class SkewT:
         ----------
         pressure : array-like
             Pressure values
-        t : array-like
-            Temperature values
-        t_parcel : array-like
-            Parcel path temperature values
-        limit_shading : bool
-            Eliminate shading below the LCL or above the EL, default is True
+        tv : array_like
+            Virtual temperature of environment
+        tv_parcel : array_like
+            Parcel path virtual temperature values
         kwargs
             Other keyword arguments to pass to :class:`matplotlib.collections.PolyCollection`
 
@@ -702,25 +701,24 @@ class SkewT:
         :meth:`matplotlib.axes.Axes.fill_betweenx`
 
         """
-        return self.shade_area(pressure, t_parcel, t, which='positive', **kwargs)
+        return self.shade_area(pressure, tv_parcel, tv, which='positive', **kwargs)
 
-    def shade_cin(self, pressure, t, t_parcel, dewpoint=None, **kwargs):
+    def shade_cin(self, pressure, tv, tv_parcel, top="el", **kwargs):
         r"""Shade areas of Convective INhibition (CIN).
 
         Shades areas where the parcel is cooler than the environment (areas of negative
-        buoyancy). If `dewpoint` is passed in, negative area below the lifting condensation
-        level or above the equilibrium level is not shaded.
+        buoyancy). 
 
         Parameters
         ----------
         pressure : array-like
             Pressure values
-        t : array-like
-            Temperature values
-        t_parcel : array-like
-            Parcel path temperature values
-        dewpoint : array-like
-            Dew point values, optional
+        tv : array_like
+            Virtual temperature of environment
+        tv_parcel : array_like
+            Parcel path virtual temperature values
+        top: string
+            top of shaded area, optional, choices: ["el", None]
         kwargs
             Other keyword arguments to pass to :class:`matplotlib.collections.PolyCollection`
 
@@ -734,13 +732,16 @@ class SkewT:
         :meth:`matplotlib.axes.Axes.fill_betweenx`
 
         """
-        if dewpoint is not None:
-            lcl_p, _ = lcl(pressure[0], t[0], dewpoint[0])
-            el_p, _ = el(pressure, t, dewpoint, t_parcel)
-            idx = np.logical_and(pressure > el_p, pressure < lcl_p)
-        else:
+        if top == 'el':
+            el_p, _ = el(pressure, tv, tv_parcel)
+            logging.debug(f"el_p={el_p}")
+            idx = pressure >= el_p
+        elif top is None:
             idx = np.arange(0, len(pressure))
-        return self.shade_area(pressure[idx], t_parcel[idx], t[idx], which='negative',
+        else:
+            logging.error(f"unexpected top {top}")
+        logging.debug(f"idx={idx}")
+        return self.shade_area(pressure[idx], tv_parcel[idx], tv[idx], which='negative',
                                **kwargs)
 
 

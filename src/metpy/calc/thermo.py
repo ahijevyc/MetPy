@@ -928,16 +928,6 @@ def lfc(pressure, temperature, dewpoint, parcel_temperature_profile=None, dewpoi
        Renamed ``dewpt``,``dewpoint_start`` parameters to ``dewpoint``, ``dewpoint_start``
 
     """
-    # Default to surface parcel if no profile or starting pressure level is given
-    if parcel_temperature_profile is None:
-        pressure, temperature, dewpoint = _remove_nans(pressure, temperature, dewpoint)
-        new_profile = parcel_profile_with_lcl(pressure, temperature, dewpoint)
-        pressure, temperature, dewpoint, parcel_temperature_profile = new_profile
-        parcel_temperature_profile = parcel_temperature_profile.to(temperature.units)
-    else:
-        new_profile = _remove_nans(pressure, temperature, dewpoint, parcel_temperature_profile)
-        pressure, temperature, dewpoint, parcel_temperature_profile = new_profile
-
     if dewpoint_start is None:
         dewpoint_start = dewpoint[0]
 
@@ -1066,8 +1056,8 @@ def _most_cape_option(intersect_type, p_list, t_list, pressure, temperature, dew
 
 @exporter.export
 @preprocess_and_wrap()
-@check_units('[pressure]', '[temperature]', '[temperature]', '[temperature]')
-def el(pressure, temperature, dewpoint, parcel_temperature_profile=None, which='top'):
+@check_units('[pressure]', '[temperature]', '[temperature]')
+def el(pressure, temperature, parcel_temperature_profile):
     r"""Calculate the equilibrium level.
 
     This works by finding the last intersection of the ideal parcel path and
@@ -1082,19 +1072,9 @@ def el(pressure, temperature, dewpoint, parcel_temperature_profile=None, which='
     temperature : `pint.Quantity`
         Temperature at the levels given by `pressure`
 
-    dewpoint : `pint.Quantity`
-        Dewpoint at the levels given by `pressure`
-
     parcel_temperature_profile: `pint.Quantity`, optional
         The parcel's temperature profile from which to calculate the EL. Defaults to the
         surface parcel profile.
-
-    which: str, optional
-        Pick which EL to return. Options are 'top', 'bottom', 'wide', 'most_cape', and 'all'.
-        'top' returns the lowest-pressure EL, default.
-        'bottom' returns the highest-pressure EL.
-        'wide' returns the EL whose corresponding LFC is farthest away.
-        'most_cape' returns the EL that results in the most CAPE in the profile.
 
     Returns
     -------
@@ -1127,8 +1107,8 @@ def el(pressure, temperature, dewpoint, parcel_temperature_profile=None, which='
     >>> # compute parcel profile temperature
     >>> prof = parcel_profile(p, T[0], Td[0]).to('degC')
     >>> # calculate EL
-    >>> el(p, T, Td, prof)
-    (<Quantity(112.252054, 'hectopascal')>, <Quantity(-76.2210312, 'degree_Celsius')>)
+    >>> el(p, T, prof)
+    (<Quantity(111.739463, 'hectopascal')>, <Quantity(-76.3112792, 'degree_Celsius')>)
 
     See Also
     --------
@@ -1140,39 +1120,21 @@ def el(pressure, temperature, dewpoint, parcel_temperature_profile=None, which='
     Since this function returns scalar values when given a profile, this will return Pint
     Quantities even when given xarray DataArray profiles.
 
-    .. versionchanged:: 1.0
-       Renamed ``dewpt`` parameter to ``dewpoint``
-
     """
-    # Default to surface parcel if no profile or starting pressure level is given
-    if parcel_temperature_profile is None:
-        pressure, temperature, dewpoint = _remove_nans(pressure, temperature, dewpoint)
-        new_profile = parcel_profile_with_lcl(pressure, temperature, dewpoint)
-        pressure, temperature, dewpoint, parcel_temperature_profile = new_profile
-        parcel_temperature_profile = parcel_temperature_profile.to(temperature.units)
-    else:
-        new_profile = _remove_nans(pressure, temperature, dewpoint, parcel_temperature_profile)
-        pressure, temperature, dewpoint, parcel_temperature_profile = new_profile
-
+    el_p = units.Quantity(np.nan, pressure.units)
+    el_t = units.Quantity(np.nan, temperature.units)
     # If the top of the sounding parcel is warmer than the environment, there is no EL
     if parcel_temperature_profile[-1] > temperature[-1]:
-        return (units.Quantity(np.nan, pressure.units),
-                units.Quantity(np.nan, temperature.units))
+        return (el_p, el_t)
 
     # Interpolate in log space to find the appropriate pressure - units have to be stripped
     # and reassigned to allow np.log() to function properly.
-    x, y = find_intersections(pressure[1:], parcel_temperature_profile[1:], temperature[1:],
+    x, y = find_intersections(pressure, parcel_temperature_profile, temperature,
                               direction='decreasing', log_x=True)
-    lcl_p, _ = lcl(pressure[0], temperature[0], dewpoint[0])
-    if len(x) > 0 and x[-1] < lcl_p:
-        idx = x < lcl_p
-        return _multiple_el_lfc_options(x, y, idx, which, pressure,
-                                        parcel_temperature_profile, temperature, dewpoint,
-                                        intersect_type='EL')
-    else:
-        return (units.Quantity(np.nan, pressure.units),
-                units.Quantity(np.nan, temperature.units))
-
+    if len(x) > 0:
+        el_p = x[-1]
+        el_t = y[-1]
+    return (el_p, el_t)
 
 @exporter.export
 @preprocess_and_wrap(wrap_like='pressure')
@@ -1670,6 +1632,9 @@ def _saturation_vapor_pressure_solid(temperature):
         * (mpconsts.nounit.T0 / temperature) ** heat_power
         * np.exp(exp_term)
     )
+    # Set any nans to 0
+    val = np.nan_to_num(val)
+    return val
 
 
 @exporter.export
@@ -1750,6 +1715,8 @@ def dewpoint(vapor_pressure):
        Renamed ``e`` parameter to ``vapor_pressure``
 
     """
+    epsilon = 1e-10  # small value to avoid division by zero
+    vapor_pressure = np.where(vapor_pressure == 0, epsilon, vapor_pressure)
     val = np.log(vapor_pressure / mpconsts.nounit.sat_pressure_0c)
     return mpconsts.nounit.zero_degc + 243.5 * val / (17.67 - val)
 
@@ -2822,8 +2789,6 @@ def cape_cin(pressure, temperature, dewpoint, parcel_profile, which_lfc='bottom'
        Renamed ``dewpt`` parameter to ``dewpoint``
 
     """
-    pressure, temperature, dewpoint, parcel_profile = _remove_nans(pressure, temperature,
-                                                                   dewpoint, parcel_profile)
 
     pressure_lcl, _ = lcl(pressure[0], temperature[0], dewpoint[0])
     below_lcl = pressure > pressure_lcl
@@ -2851,8 +2816,7 @@ def cape_cin(pressure, temperature, dewpoint, parcel_profile, which_lfc='bottom'
         lfc_pressure = lfc_pressure.magnitude
 
     # Calculate the EL limit of integration
-    el_pressure, _ = el(pressure, temperature, dewpoint,
-                        parcel_temperature_profile=parcel_profile, which=which_el)
+    el_pressure, _ = el(pressure, temperature, parcel_profile)
 
     # No EL and we use the top reading of the sounding.
     el_pressure = pressure[-1].magnitude if np.isnan(el_pressure) else el_pressure.magnitude
