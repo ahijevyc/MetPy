@@ -45,7 +45,7 @@
   <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
 <link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
 
-    <script src="../../_static/documentation_options.js?v=1a32c62c"></script>
+    <script src="../../_static/documentation_options.js?v=83084fbb"></script>
     <script src="../../_static/doctools.js?v=9bcbadda"></script>
     <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/design-tabs.js?v=f930bc37"></script>
@@ -80,7 +80,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="0.0dev" />
-    <meta name="docbuild:last-update" content="Apr 28, 2025 at 20:35:01"/>
+    <meta name="docbuild:last-update" content="Jun 10, 2025 at 15:32:08"/>
     <link rel="canonical" href="https://unidata.github.io/MetPy/latest/examples/plots/Sounding_LCL_Dataset.html" />
 
   </head>
@@ -536,6 +536,11 @@
 <li class="toctree-l2"><a class="reference internal" href="Station_Plot_with_Layout.html">Station Plot with Layout</a></li>
 </ul>
 </details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../remote/index.html">Remote Data</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../remote/ml_forecast.html">ML Weather Prediction Access and Plotting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../remote/basic.html">Remote Data Access</a></li>
+</ul>
+</details></li>
 </ul>
 </div>
 </nav></div>
@@ -685,6 +690,8 @@ assign units.</p>
 </div>
 <img src="../../_images/sphx_glr_Sounding_LCL_Dataset_001.png" srcset="../../_images/sphx_glr_Sounding_LCL_Dataset_001.png" alt="KOUN, 2011-05-22 12 UTC" class = "sphx-glr-single-img"/><div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>/opt/hostedtoolcache/Python/3.13.3/x64/lib/python3.13/site-packages/scipy/integrate/_ivp/base.py:23: UserWarning: Saturation mixing ratio is undefined for some requested pressure/temperature combinations. Total pressure must be greater than the water vapor saturation pressure for liquid water to be in equilibrium.
   return np.asarray(fun(t, y), dtype=dtype)
+/opt/hostedtoolcache/Python/3.13.3/x64/lib/python3.13/site-packages/metpy/calc/thermo.py:1633: RuntimeWarning: invalid value encountered in power
+  * (mpconsts.nounit.T0 / temperature) ** heat_power
 </pre></div>
 </div>
 <p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 0.185 seconds)</p>
